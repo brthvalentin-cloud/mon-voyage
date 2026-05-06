@@ -65,7 +65,7 @@ function Parcours({ stops, save }) {
       </div>
       {stops.length === 0 && <p className="empty">Aucune étape — ajoutez votre première destination ✈️</p>}
       <div className="timeline">
-        {stops.map((s, i) => (
+        {[...stops].sort((a,b)=>new Date(b.date)).map((s, i) => (
           <div key={i} className="timeline-item">
             <div className="timeline-dot" />
             {i < stops.length - 1 && <div className="timeline-line" />}
