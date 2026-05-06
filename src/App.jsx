@@ -48,9 +48,15 @@ function Parcours({ stops, save }) {
     } else {
       updated = [...stops, form];
     }
+    updated = [...updated].sort((a, b) => {
+      if (!a.date) return 1;
+      if (!b.date) return -1;
+      return new Date(a.date) - new Date(b.date);
+    });
     save("stops", updated);
     setForm({ ville: "", date: "", note: "" });
   };
+
 
   const remove = (i) => save("stops", stops.filter((_, idx) => idx !== i));
   const edit = (i) => { setForm(stops[i]); setEditIdx(i); };
