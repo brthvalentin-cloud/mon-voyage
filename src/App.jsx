@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"; import { initializeApp } from "fire
   const firebaseConfig = {
   apiKey: "AIzaSyCMcJP8hAdKCwl5IlHjZqu9y6enG79Isao",
   authDomain: "mon-voyage-5031e.firebaseapp.com",
-  databaseURL: "https://urldefense.com/v3/__https://mon-voyage-5031e-default-rtdb.europe-west1.firebasedatabase.app__;!!IY5JXqZAIQ!9pfe5sheJ01mNil2KMDNpkrB7pNJinZNF8KvvC1XnjBeh_KYeYRBuCfefBOCzzwbAEcnq2Ibxfi2z3jYt77r$ ",
+  databaseURL: "https://mon-voyage-5031e-default-rtdb.europe-west1.firebasedatabase.app",
   projectId: "mon-voyage-5031e",
   storageBucket: "mon-voyage-5031e.firebasestorage.app",
   messagingSenderId: "510891652679",
