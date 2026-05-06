@@ -1,13 +1,14 @@
 import { useState, useEffect } from "react"; import { initializeApp } from "firebase/app"; import { getDatabase, ref, onValue, set } from "firebase/database";
 
 // 🔥 On mettra ta config Firebase ici juste après const firebaseConfig = {
-  apiKey: "REMPLACE_MOI",
-  authDomain: "REMPLACE_MOI",
-  databaseURL: "REMPLACE_MOI",
-  projectId: "REMPLACE_MOI",
-  storageBucket: "REMPLACE_MOI",
-  messagingSenderId: "REMPLACE_MOI",
-  appId: "REMPLACE_MOI",
+  const firebaseConfig = {
+  apiKey: "AIzaSyCMcJP8hAdKCwl5IlHjZqu9y6enG79Isao",
+  authDomain: "mon-voyage-5031e.firebaseapp.com",
+  databaseURL: "https://urldefense.com/v3/__https://mon-voyage-5031e-default-rtdb.europe-west1.firebasedatabase.app__;!!IY5JXqZAIQ!9pfe5sheJ01mNil2KMDNpkrB7pNJinZNF8KvvC1XnjBeh_KYeYRBuCfefBOCzzwbAEcnq2Ibxfi2z3jYt77r$ ",
+  projectId: "mon-voyage-5031e",
+  storageBucket: "mon-voyage-5031e.firebasestorage.app",
+  messagingSenderId: "510891652679",
+  appId: "1:510891652679:web:20a86ae03b985d8f3aa362"
 };
 
 const app = initializeApp(firebaseConfig); const db = getDatabase(app);
