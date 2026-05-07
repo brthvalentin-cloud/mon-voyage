@@ -134,6 +134,7 @@ function Parcours({ stops, save }) {
 function Budget({ budget, save }) {
   const [form, setForm] = useState({ label: "", montant: "", categorie: "Transport" });
   const [showForm, setShowForm] = useState(false);
+  const [showDetail, setShowDetail] = useState(false);
   const categories = ["Transport", "Hébergement", "Resto", "Activités", "Autre"];
   const catEmoji = { Transport: "✈️", Hébergement: "🏠", Resto: "🍽️", Activités: "🎯", Autre: "📦" };
   const catColors = { Transport: "#FF5A5F", Hébergement: "#00A699", Resto: "#FC642D", Activités: "#484848", Autre: "#767676" };
@@ -156,17 +157,41 @@ function Budget({ budget, save }) {
 
   return (
     <div className="section">
-      <div className="budget-hero">
+      <div className="budget-hero" onClick={() => setShowDetail(!showDetail)} style={{ cursor: "pointer" }}>
         <p className="budget-hero-label">Total des dépenses</p>
         <p className="budget-hero-amount">{total.toFixed(2)} €</p>
         <div className="budget-chips">
           {categories.filter(c => byCategorie[c].length > 0).map(cat => (
-            <span key={cat} className="budget-chip" style={{ background: catColors[cat] + "18", color: catColors[cat] }}>
+            <span key={cat} className="budget-chip">
               {catEmoji[cat]} {byCategorie[cat].reduce((s, i) => s + parseFloat(i.montant), 0).toFixed(0)}€
             </span>
           ))}
         </div>
+        <p style={{ fontSize: "0.75rem", opacity: 0.7, marginTop: "0.75rem" }}>
+          {showDetail ? "▲ Masquer le détail" : "▼ Voir le détail par catégorie"}
+        </p>
       </div>
+
+      {showDetail && (
+        <div className="detail-card">
+          {categories.filter(c => byCategorie[c].length > 0).map(cat => {
+            const catTotal = byCategorie[cat].reduce((s, i) => s + parseFloat(i.montant), 0);
+            const pct = total > 0 ? (catTotal / total) * 100 : 0;
+            return (
+              <div key={cat} className="detail-row">
+                <div className="detail-top">
+                  <span className="detail-label">{catEmoji[cat]} {cat}</span>
+                  <span className="detail-amount" style={{ color: catColors[cat] }}>{catTotal.toFixed(2)} €</span>
+                </div>
+                <div className="detail-bar">
+                  <div className="detail-bar-fill" style={{ width: `${pct}%`, background: catColors[cat] }} />
+                </div>
+                <span className="detail-pct">{Math.round(pct)}% du total</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {!showForm && (
         <button className="btn-add-trip" onClick={() => setShowForm(true)}>
