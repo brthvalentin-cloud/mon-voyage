@@ -1,11 +1,11 @@
 import { useState, useEffect } from "react";
 import { initializeApp } from "firebase/app";
-import { getDatabase, ref, onValue, set } from "firebase/database";
+import { getDatabase, ref, onValue, set, remove as fbRemove } from "firebase/database";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCMcJP8hAdKCwl5IlHjZqu9y6enG79Isao",
   authDomain: "mon-voyage-5031e.firebaseapp.com",
-  databaseURL: "https://mon-voyage-5031e-default-rtdb.europe-west1.firebasedatabase.app",
+  databaseURL: import.meta.env.VITE_FIREBASE_DB_URL,
   projectId: "mon-voyage-5031e",
   storageBucket: "mon-voyage-5031e.firebasestorage.app",
   messagingSenderId: "510891652679",
@@ -17,21 +17,33 @@ const db = getDatabase(app);
 
 const TABS = ["Parcours", "Budget", "To-Do"];
 const TAB_ICONS = ["🗺️", "💰", "✅"];
-const defaultData = { stops: [], budget: { items: [] }, todos: [] };
+const defaultVoyageData = { stops: [], budget: { items: [] }, todos: [] };
 
-function useSharedData() {
-  const [data, setData] = useState(defaultData);
+function useVoyages() {
+  const [voyages, setVoyages] = useState({});
   const [loaded, setLoaded] = useState(false);
   useEffect(() => {
-    const r = ref(db, "voyage");
+    const r = ref(db, "voyages");
     const unsub = onValue(r, (snap) => {
-      setData(snap.val() || defaultData);
+      setVoyages(snap.val() || {});
       setLoaded(true);
     });
     return () => unsub();
   }, []);
-  const save = (key, value) => set(ref(db, `voyage/${key}`), value);
-  return { data, loaded, save };
+
+  const createVoyage = (name, destination, dates) => {
+    const id = "voyage_" + Date.now();
+    set(ref(db, `voyages/${id}`), {
+      meta: { name, destination, dates, createdAt: Date.now() },
+      ...defaultVoyageData
+    });
+    return id;
+  };
+
+  const deleteVoyage = (id) => fbRemove(ref(db, `voyages/${id}`));
+  const saveVoyageKey = (id, key, value) => set(ref(db, `voyages/${id}/${key}`), value);
+
+  return { voyages, loaded, createVoyage, deleteVoyage, saveVoyageKey };
 }
 
 function Parcours({ stops, save }) {
@@ -69,7 +81,6 @@ function Parcours({ stops, save }) {
           Ajouter une étape
         </button>
       )}
-
       {showForm && (
         <div className="form-card">
           <div className="form-header">
@@ -93,7 +104,6 @@ function Parcours({ stops, save }) {
           </div>
         </div>
       )}
-
       {stops.length === 0 && !showForm && (
         <div className="empty-state">
           <div className="empty-icon">✈️</div>
@@ -101,7 +111,6 @@ function Parcours({ stops, save }) {
           <p className="empty-sub">Ajoutez vos premières étapes de voyage</p>
         </div>
       )}
-
       <div className="stops-list">
         {stops.map((s, i) => (
           <div key={i} className="stop-card">
@@ -117,11 +126,7 @@ function Parcours({ stops, save }) {
                   <button className="btn-icon" onClick={() => remove(i)}>🗑️</button>
                 </div>
               </div>
-              {s.date && (
-                <span className="stop-date">
-                  📅 {new Date(s.date).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "long" })}
-                </span>
-              )}
+              {s.date && <span className="stop-date">📅 {new Date(s.date).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "long" })}</span>}
               {s.note && <p className="stop-note">{s.note}</p>}
             </div>
           </div>
@@ -162,16 +167,13 @@ function Budget({ budget, save }) {
         <p className="budget-hero-amount">{total.toFixed(2)} €</p>
         <div className="budget-chips">
           {categories.filter(c => byCategorie[c].length > 0).map(cat => (
-            <span key={cat} className="budget-chip">
-              {catEmoji[cat]} {byCategorie[cat].reduce((s, i) => s + parseFloat(i.montant), 0).toFixed(0)}€
-            </span>
+            <span key={cat} className="budget-chip">{catEmoji[cat]} {byCategorie[cat].reduce((s, i) => s + parseFloat(i.montant), 0).toFixed(0)}€</span>
           ))}
         </div>
         <p style={{ fontSize: "0.75rem", opacity: 0.7, marginTop: "0.75rem" }}>
           {showDetail ? "▲ Masquer le détail" : "▼ Voir le détail par catégorie"}
         </p>
       </div>
-
       {showDetail && (
         <div className="detail-card">
           {categories.filter(c => byCategorie[c].length > 0).map(cat => {
@@ -192,14 +194,12 @@ function Budget({ budget, save }) {
           })}
         </div>
       )}
-
       {!showForm && (
         <button className="btn-add-trip" onClick={() => setShowForm(true)}>
           <span className="btn-add-icon">+</span>
           Ajouter une dépense
         </button>
       )}
-
       {showForm && (
         <div className="form-card">
           <div className="form-header">
@@ -227,7 +227,6 @@ function Budget({ budget, save }) {
           </div>
         </div>
       )}
-
       {items.length === 0 && !showForm && (
         <div className="empty-state">
           <div className="empty-icon">💳</div>
@@ -235,7 +234,6 @@ function Budget({ budget, save }) {
           <p className="empty-sub">Gardez un œil sur votre budget de voyage</p>
         </div>
       )}
-
       {categories.map((cat) => byCategorie[cat].length > 0 ? (
         <div key={cat} className="budget-group">
           <div className="group-header" style={{ borderLeft: `3px solid ${catColors[cat]}` }}>
@@ -287,18 +285,10 @@ function TodoList({ todos, save }) {
           </div>
         </div>
       )}
-
       <div className="todo-input-row">
-        <input
-          className="inp todo-inp"
-          placeholder="Ajouter une tâche…"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && add()}
-        />
+        <input className="inp todo-inp" placeholder="Ajouter une tâche…" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && add()} />
         <button className="btn-primary btn-add-inline" onClick={add}>Ajouter</button>
       </div>
-
       {todos.length === 0 && (
         <div className="empty-state">
           <div className="empty-icon">📋</div>
@@ -306,12 +296,11 @@ function TodoList({ todos, save }) {
           <p className="empty-sub">Passeport, visas, réservations… tout ici !</p>
         </div>
       )}
-
       <div className="todo-list">
-        {todos.filter(t => !t.done).map((t, i) => {
+        {todos.filter(t => !t.done).map((t) => {
           const realIdx = todos.findIndex((x) => x === t);
           return (
-            <div key={i} className="todo-item">
+            <div key={realIdx} className="todo-item">
               <button className="todo-check" onClick={() => toggle(realIdx)} />
               <span className="todo-text">{t.text}</span>
               <button className="btn-icon small" onClick={() => remove(realIdx)}>🗑️</button>
@@ -321,10 +310,10 @@ function TodoList({ todos, save }) {
         {todos.filter(t => t.done).length > 0 && (
           <>
             <p className="done-separator">Terminées</p>
-            {todos.filter(t => t.done).map((t, i) => {
+            {todos.filter(t => t.done).map((t) => {
               const realIdx = todos.findIndex((x) => x === t);
               return (
-                <div key={i} className="todo-item done">
+                <div key={realIdx} className="todo-item done">
                   <button className="todo-check checked" onClick={() => toggle(realIdx)}>✓</button>
                   <span className="todo-text">{t.text}</span>
                   <button className="btn-icon small" onClick={() => remove(realIdx)}>🗑️</button>
@@ -338,9 +327,140 @@ function TodoList({ todos, save }) {
   );
 }
 
-export default function App() {
+function VoyageDetail({ voyageId, voyage, saveKey, onBack }) {
   const [tab, setTab] = useState(0);
-  const { data, loaded, save } = useSharedData();
+  const meta = voyage.meta || {};
+  const stops = voyage.stops || [];
+  const budget = voyage.budget || { items: [] };
+  const todos = voyage.todos || [];
+
+  return (
+    <>
+      <div className="header">
+        <button className="btn-back" onClick={onBack}>← Tous les voyages</button>
+        <div className="header-eyebrow">{meta.destination || "Destination"}</div>
+        <h1 className="header-title">{meta.name || "Mon Voyage"}</h1>
+        {meta.dates && <p className="header-dates">📅 {meta.dates}</p>}
+        <div className="tabs">
+          {TABS.map((t, i) => (
+            <button key={i} className={`tab ${tab === i ? "active" : ""}`} onClick={() => setTab(i)}>
+              {TAB_ICONS[i]} {t}
+            </button>
+          ))}
+        </div>
+      </div>
+      {tab === 0 && <Parcours stops={stops} save={(key, val) => saveKey(voyageId, key, val)} />}
+      {tab === 1 && <Budget budget={budget} save={(key, val) => saveKey(voyageId, key, val)} />}
+      {tab === 2 && <TodoList todos={todos} save={(key, val) => saveKey(voyageId, key, val)} />}
+    </>
+  );
+}
+
+function VoyageList({ voyages, onCreate, onSelect, onDelete }) {
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({ name: "", destination: "", dates: "" });
+  const [confirmDelete, setConfirmDelete] = useState(null);
+
+  const submit = () => {
+    if (!form.name.trim()) return;
+    const id = onCreate(form.name, form.destination, form.dates);
+    setForm({ name: "", destination: "", dates: "" });
+    setShowForm(false);
+    onSelect(id);
+  };
+
+  const list = Object.entries(voyages).sort((a, b) => (b[1].meta?.createdAt || 0) - (a[1].meta?.createdAt || 0));
+
+  return (
+    <>
+      <div className="home-header">
+        <p className="home-eyebrow">Planificateur collaboratif</p>
+        <h1 className="home-title">Mes Voyages ✈️</h1>
+      </div>
+      <div className="section">
+        {!showForm && (
+          <button className="btn-new-voyage" onClick={() => setShowForm(true)}>
+            <span className="btn-new-icon">+</span>
+            Nouveau voyage
+          </button>
+        )}
+        {showForm && (
+          <div className="form-card">
+            <div className="form-header">
+              <span>Nouveau voyage</span>
+              <button className="btn-close" onClick={() => setShowForm(false)}>✕</button>
+            </div>
+            <div className="form-body">
+              <div className="input-group">
+                <label className="input-label">Nom du voyage</label>
+                <input className="inp" placeholder="Ex: Road trip Espagne" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+              </div>
+              <div className="input-group">
+                <label className="input-label">Destination</label>
+                <input className="inp" placeholder="Ex: Barcelone, Madrid…" value={form.destination} onChange={(e) => setForm({ ...form, destination: e.target.value })} />
+              </div>
+              <div className="input-group">
+                <label className="input-label">Dates</label>
+                <input className="inp" placeholder="Ex: 15 juin - 30 juin 2025" value={form.dates} onChange={(e) => setForm({ ...form, dates: e.target.value })} />
+              </div>
+              <button className="btn-primary" onClick={submit}>Créer le voyage</button>
+            </div>
+          </div>
+        )}
+        {list.length === 0 && !showForm && (
+          <div className="empty-state" style={{ paddingTop: "4rem" }}>
+            <div className="empty-icon">🌍</div>
+            <p className="empty-title">Aucun voyage pour l'instant</p>
+            <p className="empty-sub">Créez votre premier voyage pour commencer à planifier !</p>
+          </div>
+        )}
+        <div className="voyage-list">
+          {list.map(([id, voyage]) => {
+            const meta = voyage.meta || {};
+            const stops = voyage.stops || [];
+            const todos = voyage.todos || [];
+            const budget = voyage.budget || { items: [] };
+            const total = (budget.items || []).reduce((s, i) => s + parseFloat(i.montant || 0), 0);
+            const doneTodos = todos.filter(t => t.done).length;
+            return (
+              <div key={id} className="voyage-card" onClick={() => onSelect(id)}>
+                <div className="voyage-card-top">
+                  <div>
+                    <p className="voyage-destination">{meta.destination || "Destination"}</p>
+                    <h2 className="voyage-name">{meta.name}</h2>
+                    {meta.dates && <p className="voyage-dates">📅 {meta.dates}</p>}
+                  </div>
+                  <button className="btn-delete-voyage" onClick={(e) => { e.stopPropagation(); setConfirmDelete(id); }}>🗑️</button>
+                </div>
+                <div className="voyage-stats">
+                  <span className="voyage-stat">🗺️ {stops.length} étape{stops.length > 1 ? "s" : ""}</span>
+                  <span className="voyage-stat">💰 {total.toFixed(0)} €</span>
+                  <span className="voyage-stat">✅ {doneTodos}/{todos.length} tâches</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      {confirmDelete && (
+        <div className="modal-overlay" onClick={() => setConfirmDelete(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <p className="modal-title">Supprimer ce voyage ?</p>
+            <p className="modal-sub">Cette action est irréversible.</p>
+            <div className="modal-actions">
+              <button className="btn-cancel" onClick={() => setConfirmDelete(null)}>Annuler</button>
+              <button className="btn-danger" onClick={() => { onDelete(confirmDelete); setConfirmDelete(null); }}>Supprimer</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+export default function App() {
+  const { voyages, loaded, createVoyage, deleteVoyage, saveVoyageKey } = useVoyages();
+  const [selectedId, setSelectedId] = useState(null);
 
   if (!loaded) return (
     <div className="loading">
@@ -349,384 +469,128 @@ export default function App() {
     </div>
   );
 
+  const selectedVoyage = selectedId ? voyages[selectedId] : null;
+
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Circular+Std:wght@400;500;700&family=Cedarville+Cursive&display=swap');
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
-
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-        body {
-          background: #F7F7F7;
-          color: #222222;
-          font-family: 'Plus Jakarta Sans', sans-serif;
-          min-height: 100vh;
-        }
-
-        .app {
-          max-width: 480px;
-          margin: 0 auto;
-          min-height: 100vh;
-          background: #fff;
-          box-shadow: 0 0 40px rgba(0,0,0,0.08);
-          padding-bottom: 100px;
-        }
-
-        /* Header */
-        .header {
-          padding: 3rem 1.5rem 0;
-          background: #fff;
-          position: sticky;
-          top: 0;
-          z-index: 10;
-          border-bottom: 1px solid #EBEBEB;
-        }
-        .header-eyebrow {
-          font-size: 0.7rem;
-          font-weight: 600;
-          letter-spacing: 0.12em;
-          text-transform: uppercase;
-          color: #FF5A5F;
-          margin-bottom: 0.3rem;
-        }
-        .header-title {
-          font-size: 1.6rem;
-          font-weight: 700;
-          color: #222;
-          letter-spacing: -0.03em;
-          margin-bottom: 1.25rem;
-        }
-
-        /* Tabs */
-        .tabs {
-          display: flex;
-          gap: 0;
-          border-bottom: none;
-          margin: 0 -1.5rem;
-          padding: 0 1.5rem;
-        }
-        .tab {
-          flex: 1;
-          padding: 0.75rem 0.5rem;
-          border: none;
-          background: transparent;
-          color: #717171;
-          font-family: 'Plus Jakarta Sans', sans-serif;
-          font-size: 0.82rem;
-          font-weight: 600;
-          cursor: pointer;
-          border-bottom: 2px solid transparent;
-          transition: all 0.2s;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 0.4rem;
-        }
-        .tab.active {
-          color: #222;
-          border-bottom: 2px solid #FF5A5F;
-        }
-
-        /* Section */
+        body { background: #F7F7F7; color: #222; font-family: 'Plus Jakarta Sans', sans-serif; min-height: 100vh; }
+        .app { max-width: 480px; margin: 0 auto; min-height: 100vh; background: #fff; box-shadow: 0 0 40px rgba(0,0,0,0.08); padding-bottom: 100px; }
+        .home-header { padding: 3rem 1.5rem 1.5rem; background: linear-gradient(135deg, #FF5A5F, #FC642D); color: #fff; }
+        .home-eyebrow { font-size: 0.7rem; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.85; margin-bottom: 0.3rem; }
+        .home-title { font-size: 1.8rem; font-weight: 700; letter-spacing: -0.03em; }
+        .btn-new-voyage { width: 100%; display: flex; align-items: center; justify-content: center; gap: 0.5rem; padding: 1rem; border: 2px dashed #FF5A5F; border-radius: 14px; background: rgba(255,90,95,0.03); color: #FF5A5F; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 700; font-size: 0.95rem; cursor: pointer; transition: all 0.2s; margin-bottom: 1.5rem; }
+        .btn-new-voyage:hover { background: rgba(255,90,95,0.08); }
+        .btn-new-icon { font-size: 1.3rem; }
+        .voyage-list { display: flex; flex-direction: column; gap: 0.85rem; }
+        .voyage-card { background: #fff; border: 1px solid #EBEBEB; border-radius: 16px; padding: 1.25rem; cursor: pointer; transition: all 0.2s; box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
+        .voyage-card:hover { box-shadow: 0 4px 20px rgba(0,0,0,0.1); transform: translateY(-1px); }
+        .voyage-card-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.85rem; }
+        .voyage-destination { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: #FF5A5F; margin-bottom: 0.2rem; }
+        .voyage-name { font-size: 1.1rem; font-weight: 700; color: #222; margin-bottom: 0.25rem; }
+        .voyage-dates { font-size: 0.78rem; color: #717171; }
+        .btn-delete-voyage { background: #F7F7F7; border: none; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; font-size: 0.85rem; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: background 0.15s; }
+        .btn-delete-voyage:hover { background: #FFE8E8; }
+        .voyage-stats { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+        .voyage-stat { font-size: 0.78rem; color: #484848; background: #F7F7F7; padding: 0.3rem 0.7rem; border-radius: 20px; font-weight: 500; }
+        .header { padding: 2rem 1.5rem 0; background: #fff; position: sticky; top: 0; z-index: 10; border-bottom: 1px solid #EBEBEB; }
+        .btn-back { background: none; border: none; color: #FF5A5F; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 0.85rem; font-weight: 600; cursor: pointer; padding: 0; margin-bottom: 0.75rem; display: block; }
+        .header-eyebrow { font-size: 0.7rem; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: #FF5A5F; margin-bottom: 0.2rem; }
+        .header-title { font-size: 1.5rem; font-weight: 700; color: #222; letter-spacing: -0.03em; margin-bottom: 0.2rem; }
+        .header-dates { font-size: 0.78rem; color: #717171; margin-bottom: 0.85rem; }
+        .tabs { display: flex; margin: 0 -1.5rem; padding: 0 1.5rem; }
+        .tab { flex: 1; padding: 0.75rem 0.5rem; border: none; background: transparent; color: #717171; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 0.82rem; font-weight: 600; cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 0.4rem; }
+        .tab.active { color: #222; border-bottom: 2px solid #FF5A5F; }
         .section { padding: 1.5rem; }
-
-        /* Form card */
-        .form-card {
-          background: #fff;
-          border: 1px solid #EBEBEB;
-          border-radius: 16px;
-          margin-bottom: 1.25rem;
-          overflow: hidden;
-          box-shadow: 0 2px 12px rgba(0,0,0,0.06);
-        }
-        .form-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          padding: 1rem 1.25rem;
-          border-bottom: 1px solid #EBEBEB;
-          font-weight: 600;
-          font-size: 0.9rem;
-          color: #222;
-        }
-        .btn-close {
-          background: #F7F7F7;
-          border: none;
-          width: 28px;
-          height: 28px;
-          border-radius: 50%;
-          cursor: pointer;
-          font-size: 0.75rem;
-          color: #717171;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-        .form-body {
-          padding: 1.25rem;
-          display: flex;
-          flex-direction: column;
-          gap: 1rem;
-        }
+        .form-card { background: #fff; border: 1px solid #EBEBEB; border-radius: 16px; margin-bottom: 1.25rem; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.06); }
+        .form-header { display: flex; justify-content: space-between; align-items: center; padding: 1rem 1.25rem; border-bottom: 1px solid #EBEBEB; font-weight: 600; font-size: 0.9rem; color: #222; }
+        .btn-close { background: #F7F7F7; border: none; width: 28px; height: 28px; border-radius: 50%; cursor: pointer; font-size: 0.75rem; color: #717171; display: flex; align-items: center; justify-content: center; }
+        .form-body { padding: 1.25rem; display: flex; flex-direction: column; gap: 1rem; }
         .input-group { display: flex; flex-direction: column; gap: 0.35rem; }
         .input-row { display: flex; gap: 0.75rem; }
         .input-label { font-size: 0.75rem; font-weight: 600; color: #717171; text-transform: uppercase; letter-spacing: 0.06em; }
-        .inp {
-          width: 100%;
-          background: #F7F7F7;
-          border: 1px solid #EBEBEB;
-          border-radius: 10px;
-          padding: 0.75rem 1rem;
-          color: #222;
-          font-family: 'Plus Jakarta Sans', sans-serif;
-          font-size: 0.9rem;
-          outline: none;
-          transition: border-color 0.2s, box-shadow 0.2s;
-        }
+        .inp { width: 100%; background: #F7F7F7; border: 1px solid #EBEBEB; border-radius: 10px; padding: 0.75rem 1rem; color: #222; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 0.9rem; outline: none; transition: border-color 0.2s, box-shadow 0.2s; }
         .inp:focus { border-color: #FF5A5F; box-shadow: 0 0 0 3px rgba(255,90,95,0.1); background: #fff; }
         .inp option { background: #fff; }
-
-        .btn-primary {
-          background: #FF5A5F;
-          color: #fff;
-          border: none;
-          border-radius: 10px;
-          padding: 0.85rem 1.5rem;
-          font-family: 'Plus Jakarta Sans', sans-serif;
-          font-weight: 600;
-          font-size: 0.9rem;
-          cursor: pointer;
-          transition: background 0.2s, transform 0.1s;
-          width: 100%;
-        }
+        .btn-primary { background: #FF5A5F; color: #fff; border: none; border-radius: 10px; padding: 0.85rem 1.5rem; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 600; font-size: 0.9rem; cursor: pointer; transition: background 0.2s; width: 100%; }
         .btn-primary:hover { background: #e0484d; }
-        .btn-primary:active { transform: scale(0.98); }
-
-        .btn-add-trip {
-          width: 100%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 0.5rem;
-          padding: 0.85rem;
-          border: 1.5px dashed #DDDDDD;
-          border-radius: 12px;
-          background: transparent;
-          color: #717171;
-          font-family: 'Plus Jakarta Sans', sans-serif;
-          font-weight: 600;
-          font-size: 0.88rem;
-          cursor: pointer;
-          transition: all 0.2s;
-          margin-bottom: 1.25rem;
-        }
-        .btn-add-trip:hover { border-color: #FF5A5F; color: #FF5A5F; background: rgba(255,90,95,0.03); }
-        .btn-add-icon { font-size: 1.1rem; font-weight: 400; }
-
-        .btn-icon {
-          background: none;
-          border: none;
-          cursor: pointer;
-          font-size: 0.9rem;
-          padding: 0.3rem;
-          border-radius: 6px;
-          transition: background 0.15s;
-          opacity: 0.6;
-        }
+        .btn-add-trip { width: 100%; display: flex; align-items: center; justify-content: center; gap: 0.5rem; padding: 0.85rem; border: 1.5px dashed #DDDDDD; border-radius: 12px; background: transparent; color: #717171; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 600; font-size: 0.88rem; cursor: pointer; transition: all 0.2s; margin-bottom: 1.25rem; }
+        .btn-add-trip:hover { border-color: #FF5A5F; color: #FF5A5F; }
+        .btn-add-icon { font-size: 1.1rem; }
+        .btn-icon { background: none; border: none; cursor: pointer; font-size: 0.9rem; padding: 0.3rem; border-radius: 6px; opacity: 0.6; transition: all 0.15s; }
         .btn-icon:hover { background: #F7F7F7; opacity: 1; }
         .btn-icon.small { font-size: 0.8rem; }
-
-        /* Empty state */
-        .empty-state {
-          text-align: center;
-          padding: 3rem 1rem;
-          color: #717171;
-        }
+        .empty-state { text-align: center; padding: 3rem 1rem; }
         .empty-icon { font-size: 2.5rem; margin-bottom: 0.75rem; }
         .empty-title { font-weight: 600; font-size: 1rem; color: #222; margin-bottom: 0.35rem; }
         .empty-sub { font-size: 0.85rem; color: #717171; }
-
-        /* Stops */
         .stops-list { display: flex; flex-direction: column; }
-        .stop-card {
-          display: flex;
-          gap: 1rem;
-          padding-bottom: 1rem;
-        }
-        .stop-left {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          flex-shrink: 0;
-        }
-        .stop-number {
-          width: 28px;
-          height: 28px;
-          border-radius: 50%;
-          background: #FF5A5F;
-          color: #fff;
-          font-size: 0.75rem;
-          font-weight: 700;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          flex-shrink: 0;
-        }
-        .stop-connector {
-          width: 2px;
-          flex: 1;
-          background: #EBEBEB;
-          margin: 4px 0;
-          min-height: 20px;
-        }
-        .stop-content {
-          flex: 1;
-          background: #fff;
-          border: 1px solid #EBEBEB;
-          border-radius: 12px;
-          padding: 0.85rem 1rem;
-          margin-bottom: 0;
-        }
-        .stop-top {
-          display: flex;
-          justify-content: space-between;
-          align-items: flex-start;
-          margin-bottom: 0.35rem;
-        }
+        .stop-card { display: flex; gap: 1rem; padding-bottom: 1rem; }
+        .stop-left { display: flex; flex-direction: column; align-items: center; flex-shrink: 0; }
+        .stop-number { width: 28px; height: 28px; border-radius: 50%; background: #FF5A5F; color: #fff; font-size: 0.75rem; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+        .stop-connector { width: 2px; flex: 1; background: #EBEBEB; margin: 4px 0; min-height: 20px; }
+        .stop-content { flex: 1; background: #fff; border: 1px solid #EBEBEB; border-radius: 12px; padding: 0.85rem 1rem; }
+        .stop-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.35rem; }
         .stop-city { font-weight: 700; font-size: 1rem; color: #222; }
         .stop-actions { display: flex; gap: 0.25rem; }
         .stop-date { font-size: 0.78rem; color: #717171; display: block; margin-bottom: 0.4rem; }
-        .stop-note { font-size: 0.83rem; color: #484848; margin-top: 0.3rem; line-height: 1.4; }
-
-        /* Budget */
-        .budget-hero {
-          background: linear-gradient(135deg, #FF5A5F, #FC642D);
-          border-radius: 16px;
-          padding: 1.5rem;
-          margin-bottom: 1.25rem;
-          color: #fff;
-        }
+        .stop-note { font-size: 0.83rem; color: #484848; line-height: 1.4; }
+        .budget-hero { background: linear-gradient(135deg, #FF5A5F, #FC642D); border-radius: 16px; padding: 1.5rem; margin-bottom: 1.25rem; color: #fff; }
         .budget-hero-label { font-size: 0.8rem; opacity: 0.85; font-weight: 500; margin-bottom: 0.3rem; }
         .budget-hero-amount { font-size: 2.2rem; font-weight: 700; letter-spacing: -0.03em; margin-bottom: 0.75rem; }
         .budget-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; }
-        .budget-chip {
-          font-size: 0.75rem;
-          font-weight: 600;
-          padding: 0.25rem 0.65rem;
-          border-radius: 20px;
-          background: rgba(255,255,255,0.2) !important;
-          color: #fff !important;
-        }
-        .budget-group {
-          background: #fff;
-          border: 1px solid #EBEBEB;
-          border-radius: 12px;
-          margin-bottom: 0.75rem;
-          overflow: hidden;
-        }
-        .group-header {
-          display: flex;
-          justify-content: space-between;
-          padding: 0.75rem 1rem;
-          background: #F7F7F7;
-          font-size: 0.82rem;
-          font-weight: 700;
-          color: #222;
-          padding-left: 0.85rem;
-        }
+        .budget-chip { font-size: 0.75rem; font-weight: 600; padding: 0.25rem 0.65rem; border-radius: 20px; background: rgba(255,255,255,0.2); color: #fff; }
+        .detail-card { background: #fff; border: 1px solid #EBEBEB; border-radius: 16px; padding: 1rem 1.25rem; margin-bottom: 1.25rem; display: flex; flex-direction: column; gap: 1rem; }
+        .detail-row { display: flex; flex-direction: column; gap: 0.35rem; }
+        .detail-top { display: flex; justify-content: space-between; }
+        .detail-label { font-size: 0.88rem; font-weight: 600; color: #222; }
+        .detail-amount { font-size: 0.88rem; font-weight: 700; }
+        .detail-bar { height: 6px; background: #F7F7F7; border-radius: 99px; overflow: hidden; }
+        .detail-bar-fill { height: 100%; border-radius: 99px; transition: width 0.4s; }
+        .detail-pct { font-size: 0.72rem; color: #717171; }
+        .budget-group { background: #fff; border: 1px solid #EBEBEB; border-radius: 12px; margin-bottom: 0.75rem; overflow: hidden; }
+        .group-header { display: flex; justify-content: space-between; padding: 0.75rem 1rem 0.75rem 0.85rem; background: #F7F7F7; font-size: 0.82rem; font-weight: 700; color: #222; }
         .group-total { color: #484848; }
-        .budget-item {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          padding: 0.7rem 1rem;
-          border-top: 1px solid #F7F7F7;
-          font-size: 0.88rem;
-        }
+        .budget-item { display: flex; justify-content: space-between; align-items: center; padding: 0.7rem 1rem; border-top: 1px solid #F7F7F7; font-size: 0.88rem; }
         .item-label { color: #484848; }
         .item-amount { font-weight: 600; color: #222; }
-
-        /* Todo */
-        .progress-card {
-          background: #F7F7F7;
-          border-radius: 12px;
-          padding: 1rem 1.25rem;
-          margin-bottom: 1.25rem;
-        }
+        .progress-card { background: #F7F7F7; border-radius: 12px; padding: 1rem 1.25rem; margin-bottom: 1.25rem; }
         .progress-top { display: flex; justify-content: space-between; margin-bottom: 0.6rem; }
         .progress-label { font-size: 0.83rem; color: #484848; font-weight: 500; }
         .progress-pct { font-size: 0.83rem; font-weight: 700; color: #FF5A5F; }
         .progress-bar { height: 5px; background: #DDDDDD; border-radius: 99px; overflow: hidden; }
         .progress-fill { height: 100%; background: #FF5A5F; border-radius: 99px; transition: width 0.4s; }
-
         .todo-input-row { display: flex; gap: 0.6rem; margin-bottom: 1.25rem; }
         .todo-inp { flex: 1; }
         .btn-add-inline { width: auto; white-space: nowrap; padding: 0.75rem 1.25rem; }
-
-        .done-separator {
-          font-size: 0.75rem;
-          font-weight: 700;
-          color: #717171;
-          text-transform: uppercase;
-          letter-spacing: 0.08em;
-          padding: 0.75rem 0 0.5rem;
-        }
-
+        .done-separator { font-size: 0.75rem; font-weight: 700; color: #717171; text-transform: uppercase; letter-spacing: 0.08em; padding: 0.75rem 0 0.5rem; }
         .todo-list { display: flex; flex-direction: column; gap: 0.5rem; }
-        .todo-item {
-          display: flex;
-          align-items: center;
-          gap: 0.75rem;
-          background: #fff;
-          border: 1px solid #EBEBEB;
-          border-radius: 10px;
-          padding: 0.85rem 1rem;
-          transition: opacity 0.2s;
-        }
+        .todo-item { display: flex; align-items: center; gap: 0.75rem; background: #fff; border: 1px solid #EBEBEB; border-radius: 10px; padding: 0.85rem 1rem; }
         .todo-item.done { opacity: 0.5; }
-        .todo-check {
-          width: 22px;
-          height: 22px;
-          border-radius: 50%;
-          border: 2px solid #DDDDDD;
-          background: transparent;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          flex-shrink: 0;
-          font-size: 0.7rem;
-          color: #fff;
-          transition: all 0.15s;
-        }
+        .todo-check { width: 22px; height: 22px; border-radius: 50%; border: 2px solid #DDDDDD; background: transparent; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 0.7rem; color: #fff; transition: all 0.15s; }
         .todo-check.checked { background: #FF5A5F; border-color: #FF5A5F; }
         .todo-check:hover { border-color: #FF5A5F; }
         .todo-text { flex: 1; font-size: 0.9rem; color: #222; }
         .todo-item.done .todo-text { text-decoration: line-through; color: #717171; }
-
-        /* Loading */
+        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 1.5rem; }
+        .modal { background: #fff; border-radius: 20px; padding: 1.75rem; width: 100%; max-width: 320px; }
+        .modal-title { font-size: 1.1rem; font-weight: 700; color: #222; margin-bottom: 0.5rem; }
+        .modal-sub { font-size: 0.85rem; color: #717171; margin-bottom: 1.5rem; }
+        .modal-actions { display: flex; gap: 0.75rem; }
+        .btn-cancel { flex: 1; padding: 0.75rem; border: 1px solid #EBEBEB; border-radius: 10px; background: #fff; color: #222; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 600; font-size: 0.9rem; cursor: pointer; }
+        .btn-danger { flex: 1; padding: 0.75rem; border: none; border-radius: 10px; background: #FF5A5F; color: #fff; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 600; font-size: 0.9rem; cursor: pointer; }
         .loading { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; gap: 1rem; color: #717171; font-size: 0.9rem; background: #fff; }
         .spinner { width: 28px; height: 28px; border: 2px solid #EBEBEB; border-top-color: #FF5A5F; border-radius: 50%; animation: spin 0.7s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
       `}</style>
-
       <div className="app">
-        <div className="header">
-          <p className="header-eyebrow">Planificateur collaboratif</p>
-          <h1 className="header-title">Mon Voyage ✈️</h1>
-          <div className="tabs">
-            {TABS.map((t, i) => (
-              <button key={i} className={`tab ${tab === i ? "active" : ""}`} onClick={() => setTab(i)}>
-                {TAB_ICONS[i]} {t}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {tab === 0 && <Parcours stops={data.stops || []} save={save} />}
-        {tab === 1 && <Budget budget={data.budget || { items: [] }} save={save} />}
-        {tab === 2 && <TodoList todos={data.todos || []} save={save} />}
+        {selectedVoyage ? (
+          <VoyageDetail voyageId={selectedId} voyage={selectedVoyage} saveKey={saveVoyageKey} onBack={() => setSelectedId(null)} />
+        ) : (
+          <VoyageList voyages={voyages} onCreate={createVoyage} onSelect={setSelectedId} onDelete={deleteVoyage} />
+        )}
       </div>
     </>
   );
