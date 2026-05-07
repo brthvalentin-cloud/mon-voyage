@@ -1,18 +1,23 @@
-import { useState, useEffect } from "react"; import { initializeApp } from "firebase/app"; import { getDatabase, ref, onValue, set } from "firebase/database";
+import { useState, useEffect } from "react";
+import { initializeApp } from "firebase/app";
+import { getDatabase, ref, onValue, set } from "firebase/database";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCMcJP8hAdKCwl5IlHjZqu9y6enG79Isao",
   authDomain: "mon-voyage-5031e.firebaseapp.com",
-  databaseURL: "https://urldefense.com/v3/__https://mon-voyage-5031e-default-rtdb.europe-west1.firebasedatabase.app__;!!IY5JXqZAIQ!6QvqFq36Ja5lctTfYBPXpVsBbwC4urQkabIOP0aE1RDKe1lNiPrGm_xll_99rUAvnms8D8SsEZXPFCVxvMWE$ ",
+  databaseURL: "https://mon-voyage-5031e-default-rtdb.europe-west1.firebasedatabase.app",
   projectId: "mon-voyage-5031e",
   storageBucket: "mon-voyage-5031e.firebasestorage.app",
   messagingSenderId: "510891652679",
   appId: "1:510891652679:web:20a86ae03b985d8f3aa362"
 };
 
-const app = initializeApp(firebaseConfig); const db = getDatabase(app);
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
 
-const TABS = ["Parcours", "Budget", "To-Do"]; const TAB_ICONS = ["🗺️", "💰", "✅"]; const defaultData = { stops: [], budget: { items: [] }, todos: [] };
+const TABS = ["Parcours", "Budget", "To-Do"];
+const TAB_ICONS = ["🗺️", "💰", "✅"];
+const defaultData = { stops: [], budget: { items: [] }, todos: [] };
 
 function useSharedData() {
   const [data, setData] = useState(defaultData);
@@ -322,8 +327,8 @@ export default function App() {
   return (
     <>
       <style>{`
-        @import url('https://urldefense.com/v3/__https://fonts.googleapis.com/css2?family=Circular*Std:wght@400;500;700&family=Cedarville*Cursive&display=swap__;Kys!!IY5JXqZAIQ!6QvqFq36Ja5lctTfYBPXpVsBbwC4urQkabIOP0aE1RDKe1lNiPrGm_xll_99rUAvnms8D8SsEZXPFKEhCco7$ ');
-        @import url('https://urldefense.com/v3/__https://fonts.googleapis.com/css2?family=Plus*Jakarta*Sans:wght@400;500;600;700&display=swap__;Kys!!IY5JXqZAIQ!6QvqFq36Ja5lctTfYBPXpVsBbwC4urQkabIOP0aE1RDKe1lNiPrGm_xll_99rUAvnms8D8SsEZXPFLoRoRSM$ ');
+        @import url('https://fonts.googleapis.com/css2?family=Circular+Std:wght@400;500;700&family=Cedarville+Cursive&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
 
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -700,4 +705,3 @@ export default function App() {
       </div>
     </>
   );
-}
