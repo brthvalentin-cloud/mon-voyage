@@ -5,7 +5,7 @@ import { getDatabase, ref, onValue, set } from "firebase/database";
 const firebaseConfig = {
   apiKey: "AIzaSyCMcJP8hAdKCwl5IlHjZqu9y6enG79Isao",
   authDomain: "mon-voyage-5031e.firebaseapp.com",
-  databaseURL: import.meta.env.VITE_FIREBASE_DB_URL,
+  databaseURL: "https://mon-voyage-5031e-default-rtdb.europe-west1.firebasedatabase.app",
   projectId: "mon-voyage-5031e",
   storageBucket: "mon-voyage-5031e.firebasestorage.app",
   messagingSenderId: "510891652679",
@@ -705,3 +705,4 @@ export default function App() {
       </div>
     </>
   );
+}
