@@ -81,11 +81,11 @@ function Planning({ stops, save }) {
   const [editIdx, setEditIdx] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
   const [addDate, setAddDate] = useState("");
+  const [draggingKey, setDraggingKey] = useState(null);
 
-  // Drag state
-  const dragItem = useRef(null);      // { dateStr, localIdx }
-  const dragOver = useRef(null);      // { dateStr, localIdx }
-  const [draggingKey, setDraggingKey] = useState(null); // "dateStr-localIdx"
+  const dragItem = useRef(null);
+  const dragOver = useRef(null);
+  const timelineRef = useRef(null);
 
   const addStop = (form) => {
     const updated = sortStops([...stops, form]);
@@ -102,7 +102,6 @@ function Planning({ stops, save }) {
 
   const remove = (i) => save("stops", stops.filter((_, idx) => idx !== i));
 
-  // Group stops by date, preserving original indices
   const withDate = stops.map((s, i) => ({ ...s, originalIdx: i })).filter(s => s.date);
   const withoutDate = stops.map((s, i) => ({ ...s, originalIdx: i })).filter(s => !s.date);
 
@@ -112,6 +111,12 @@ function Planning({ stops, save }) {
     acc[key].push(stop);
     return acc;
   }, {});
+
+  // Stable ref so the touchmove closure always reads fresh grouped
+  const groupedRef = useRef(grouped);
+  groupedRef.current = grouped;
+  const stopsRef = useRef(stops);
+  stopsRef.current = stops;
 
   const sortedDates = Object.keys(grouped).sort();
 
@@ -128,61 +133,59 @@ function Planning({ stops, save }) {
     };
   };
 
-  // Reorder stops within a day after drag
-  const handleDrop = (dateStr) => {
-    if (!dragItem.current || !dragOver.current) return;
-    if (dragItem.current.dateStr !== dateStr) return;
-    if (dragItem.current.localIdx === dragOver.current.localIdx) return;
-
-    const dayStops = [...grouped[dateStr]];
-    const from = dragItem.current.localIdx;
-    const to = dragOver.current.localIdx;
-
-    // Reorder within the day
-    const [moved] = dayStops.splice(from, 1);
-    dayStops.splice(to, 0, moved);
-
-    // Rebuild the full stops array: replace original positions of this day's stops
-    const originalIndices = grouped[dateStr].map(s => s.originalIdx);
-    const newStops = [...stops];
-    dayStops.forEach((stop, i) => {
-      newStops[originalIndices[i]] = { ville: stop.ville, date: stop.date, note: stop.note };
-    });
-
-    save("stops", newStops);
+  const resetDrag = () => {
     dragItem.current = null;
     dragOver.current = null;
     setDraggingKey(null);
   };
 
-  // Touch drag support
-  const touchStartPos = useRef(null);
-  const touchDragInfo = useRef(null);
+  const applyDrop = () => {
+    if (!dragItem.current || !dragOver.current) { resetDrag(); return; }
+    const { dateStr, localIdx: from } = dragItem.current;
+    const { dateStr: overDate, localIdx: to } = dragOver.current;
+    if (dateStr !== overDate || from === to) { resetDrag(); return; }
+
+    const dayStops = [...groupedRef.current[dateStr]];
+    const [moved] = dayStops.splice(from, 1);
+    dayStops.splice(to, 0, moved);
+
+    const originalIndices = groupedRef.current[dateStr].map(s => s.originalIdx);
+    const newStops = [...stopsRef.current];
+    dayStops.forEach((stop, i) => {
+      newStops[originalIndices[i]] = { ville: stop.ville, date: stop.date, note: stop.note };
+    });
+
+    save("stops", newStops);
+    resetDrag();
+  };
 
   const handleTouchStart = (e, dateStr, localIdx) => {
-    touchStartPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-    touchDragInfo.current = { dateStr, localIdx };
     dragItem.current = { dateStr, localIdx };
     setDraggingKey(`${dateStr}-${localIdx}`);
   };
 
-  const handleTouchMove = (e) => {
-    if (!dragItem.current) return;
-    const touch = e.touches[0];
-    const el = document.elementFromPoint(touch.clientX, touch.clientY);
-    if (el) {
-      const stopEl = el.closest("[data-drag-idx]");
-      if (stopEl) {
-        const idx = parseInt(stopEl.getAttribute("data-drag-idx"));
-        const dStr = stopEl.getAttribute("data-drag-date");
-        dragOver.current = { dateStr: dStr, localIdx: idx };
+  // Non-passive touchmove: blocks scroll while a drag is active
+  useEffect(() => {
+    const el = timelineRef.current;
+    if (!el) return;
+    const onTouchMove = (e) => {
+      if (!dragItem.current) return;
+      e.preventDefault(); // prevents page scroll during drag
+      const touch = e.touches[0];
+      const target = document.elementFromPoint(touch.clientX, touch.clientY);
+      if (target) {
+        const stopEl = target.closest("[data-drag-idx]");
+        if (stopEl) {
+          dragOver.current = {
+            dateStr: stopEl.getAttribute("data-drag-date"),
+            localIdx: parseInt(stopEl.getAttribute("data-drag-idx")),
+          };
+        }
       }
-    }
-  };
-
-  const handleTouchEnd = (dateStr) => {
-    handleDrop(dateStr);
-  };
+    };
+    el.addEventListener("touchmove", onTouchMove, { passive: false });
+    return () => el.removeEventListener("touchmove", onTouchMove);
+  }, []);
 
   return (
     <div className="section">
@@ -191,7 +194,6 @@ function Planning({ stops, save }) {
           <span className="btn-add-icon">+</span> Ajouter une étape
         </button>
       )}
-
       {showAdd && (
         <StopForm
           title="Nouvelle étape"
@@ -200,7 +202,6 @@ function Planning({ stops, save }) {
           onCancel={() => { setShowAdd(false); setAddDate(""); }}
         />
       )}
-
       {editIdx !== null && (
         <StopForm
           title="Modifier l'étape"
@@ -209,7 +210,6 @@ function Planning({ stops, save }) {
           onCancel={() => setEditIdx(null)}
         />
       )}
-
       {stops.length === 0 && !showAdd && (
         <div className="empty-state">
           <div className="empty-icon">📅</div>
@@ -218,8 +218,7 @@ function Planning({ stops, save }) {
         </div>
       )}
 
-      {/* Timeline */}
-      <div className="planning-timeline">
+      <div className="planning-timeline" ref={timelineRef}>
         {sortedDates.map((dateStr) => {
           const { day, date, label } = formatDayHeader(dateStr);
           const dayStops = grouped[dateStr];
@@ -247,13 +246,13 @@ function Planning({ stops, save }) {
               <div
                 className="planning-day-stops"
                 onDragOver={(e) => e.preventDefault()}
-                onDrop={() => handleDrop(dateStr)}
-                onTouchEnd={() => handleTouchEnd(dateStr)}
+                onDrop={applyDrop}
+                onTouchEnd={applyDrop}
               >
                 {dayStops.map((stop, si) => {
                   const key = `${dateStr}-${si}`;
                   const isDragging = draggingKey === key;
-                  const isOver = dragOver.current && dragOver.current.dateStr === dateStr && dragOver.current.localIdx === si && draggingKey !== key;
+                  const isOver = dragOver.current?.dateStr === dateStr && dragOver.current?.localIdx === si && draggingKey !== key;
 
                   return (
                     <div
@@ -264,13 +263,12 @@ function Planning({ stops, save }) {
                       data-drag-date={dateStr}
                       onDragStart={() => { dragItem.current = { dateStr, localIdx: si }; setDraggingKey(key); }}
                       onDragEnter={() => { dragOver.current = { dateStr, localIdx: si }; }}
-                      onDragEnd={() => { dragItem.current = null; dragOver.current = null; setDraggingKey(null); }}
+                      onDragEnd={applyDrop}
                       onTouchStart={(e) => canDrag && handleTouchStart(e, dateStr, si)}
-                      onTouchMove={canDrag ? handleTouchMove : undefined}
                     >
                       <div className="planning-stop-inner">
                         <div className="planning-stop-top">
-                          {canDrag && <span className="drag-handle" title="Réorganiser">⠿</span>}
+                          {canDrag && <span className="drag-handle">⠿</span>}
                           <span className="planning-stop-city">{stop.ville}</span>
                           <div className="stop-actions">
                             <button className="btn-icon" onClick={() => { setEditIdx(stop.originalIdx); setShowAdd(false); }}>✏️</button>
@@ -626,7 +624,7 @@ export default function App() {
         .empty-icon { font-size: 2.5rem; margin-bottom: 0.75rem; }
         .empty-title { font-weight: 600; font-size: 1rem; color: #222; margin-bottom: 0.35rem; }
         .empty-sub { font-size: 0.85rem; color: #717171; }
-        .stop-note { font-size: 0.83rem; color: #484848; line-height: 1.4; }
+        .stop-note { font-size: 0.83rem; color: #484848; line-height: 1.4; margin-top: 0.4rem; }
 
         /* Planning */
         .planning-timeline { display: flex; flex-direction: column; gap: 0; }
@@ -642,17 +640,16 @@ export default function App() {
         .btn-add-day { background: #F7F7F7; border: none; width: 28px; height: 28px; border-radius: 50%; cursor: pointer; font-size: 1rem; color: #FF5A5F; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-weight: 700; transition: background 0.15s; margin-top: 2px; }
         .btn-add-day:hover { background: #FFE8E8; }
         .planning-day-stops { padding-left: 1.75rem; display: flex; flex-direction: column; gap: 0.5rem; }
-        .planning-stop { transition: opacity 0.15s, transform 0.15s; cursor: default; }
+        .planning-stop { transition: opacity 0.15s, transform 0.15s; touch-action: none; }
         .planning-stop[draggable="true"] { cursor: grab; }
         .planning-stop[draggable="true"]:active { cursor: grabbing; }
         .planning-stop.dragging { opacity: 0.35; transform: scale(0.98); }
         .planning-stop.drag-over .planning-stop-inner { border-top: 2px solid #FF5A5F; }
         .planning-stop-inner { background: #fff; border: 1px solid #EBEBEB; border-left: 3px solid #FF5A5F; border-radius: 10px; padding: 0.85rem 1rem; }
-        .planning-stop-top { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
+        .planning-stop-top { display: flex; align-items: center; gap: 0.5rem; }
         .planning-stop-city { font-weight: 700; font-size: 0.95rem; color: #222; flex: 1; }
-        .stop-actions { display: flex; gap: 0.25rem; flex-shrink: 0; }
-        .drag-handle { font-size: 1.1rem; color: #BBBBBB; cursor: grab; user-select: none; flex-shrink: 0; line-height: 1; }
-        .drag-handle:active { cursor: grabbing; }
+        .stop-actions { display: flex; gap: 0.25rem; flex-shrink: 0; margin-left: auto; }
+        .drag-handle { font-size: 1.2rem; color: #CCCCCC; user-select: none; flex-shrink: 0; line-height: 1; padding: 0 2px; }
 
         .budget-hero { background: linear-gradient(135deg, #FF5A5F, #FC642D); border-radius: 16px; padding: 1.5rem; margin-bottom: 1.25rem; color: #fff; }
         .budget-hero-label { font-size: 0.8rem; opacity: 0.85; font-weight: 500; margin-bottom: 0.3rem; }
