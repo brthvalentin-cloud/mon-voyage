@@ -444,10 +444,9 @@ function VoyageDetail({ voyageId, voyage, saveKey, onBack }) {
           ))}
         </div>
       </div>
-      {tab === 0 && <Parcours stops={stops} save={save} />}
-      {tab === 1 && <Budget budget={budget} save={save} />}
-      {tab === 2 && <TodoList todos={todos} save={save} />}
-      {tab === 3 && <Planning stops={stops} save={save} />}
+       {tab === 0 && <Planning stops={stops} save={save} />}
+       {tab === 1 && <Budget budget={budget} save={save} />}
+       {tab === 2 && <TodoList todos={todos} save={save} />}
     </>
   );
 }
