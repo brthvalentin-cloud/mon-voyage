@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { initializeApp } from "firebase/app";
 import { getDatabase, ref, onValue, set, remove as fbRemove } from "firebase/database";
 
@@ -40,7 +40,7 @@ function useVoyages() {
   return { voyages, loaded, createVoyage, deleteVoyage, saveVoyageKey };
 }
 
-// ─── STOP FORM (shared between Parcours & Planning) ──────────────────────────
+// ─── STOP FORM ────────────────────────────────────────────────────────────────
 function StopForm({ initial, onSave, onCancel, title }) {
   const [form, setForm] = useState(initial || { ville: "", date: "", note: "" });
   return (
@@ -76,73 +76,16 @@ function sortStops(stops) {
   });
 }
 
-// ─── PARCOURS ─────────────────────────────────────────────────────────────────
-function Parcours({ stops, save }) {
-  const [editIdx, setEditIdx] = useState(null);
-  const [showAdd, setShowAdd] = useState(false);
-
-  const addStop = (form) => {
-    const updated = sortStops([...stops, form]);
-    save("stops", updated);
-    setShowAdd(false);
-  };
-
-  const editStop = (form) => {
-    const updated = sortStops(stops.map((s, i) => (i === editIdx ? form : s)));
-    save("stops", updated);
-    setEditIdx(null);
-  };
-
-  const remove = (i) => save("stops", stops.filter((_, idx) => idx !== i));
-
-  return (
-    <div className="section">
-      {!showAdd && editIdx === null && (
-        <button className="btn-add-trip" onClick={() => setShowAdd(true)}>
-          <span className="btn-add-icon">+</span> Ajouter une étape
-        </button>
-      )}
-      {showAdd && <StopForm title="Nouvelle étape" onSave={addStop} onCancel={() => setShowAdd(false)} />}
-      {editIdx !== null && (
-        <StopForm title="Modifier l'étape" initial={stops[editIdx]} onSave={editStop} onCancel={() => setEditIdx(null)} />
-      )}
-      {stops.length === 0 && !showAdd && (
-        <div className="empty-state">
-          <div className="empty-icon">✈️</div>
-          <p className="empty-title">Planifiez votre itinéraire</p>
-          <p className="empty-sub">Ajoutez vos premières étapes de voyage</p>
-        </div>
-      )}
-      <div className="stops-list">
-        {stops.map((s, i) => (
-          <div key={i} className="stop-card">
-            <div className="stop-left">
-              <div className="stop-number">{i + 1}</div>
-              {i < stops.length - 1 && <div className="stop-connector" />}
-            </div>
-            <div className="stop-content">
-              <div className="stop-top">
-                <span className="stop-city">{s.ville}</span>
-                <div className="stop-actions">
-                  <button className="btn-icon" onClick={() => { setEditIdx(i); setShowAdd(false); }}>✏️</button>
-                  <button className="btn-icon" onClick={() => remove(i)}>🗑️</button>
-                </div>
-              </div>
-              {s.date && <span className="stop-date">📅 {new Date(s.date).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "long" })}</span>}
-              {s.note && <p className="stop-note">{s.note}</p>}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 // ─── PLANNING ─────────────────────────────────────────────────────────────────
 function Planning({ stops, save }) {
   const [editIdx, setEditIdx] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
   const [addDate, setAddDate] = useState("");
+
+  // Drag state
+  const dragItem = useRef(null);      // { dateStr, localIdx }
+  const dragOver = useRef(null);      // { dateStr, localIdx }
+  const [draggingKey, setDraggingKey] = useState(null); // "dateStr-localIdx"
 
   const addStop = (form) => {
     const updated = sortStops([...stops, form]);
@@ -159,14 +102,14 @@ function Planning({ stops, save }) {
 
   const remove = (i) => save("stops", stops.filter((_, idx) => idx !== i));
 
-  // Group stops by date
-  const withDate = stops.filter(s => s.date);
-  const withoutDate = stops.filter(s => !s.date);
+  // Group stops by date, preserving original indices
+  const withDate = stops.map((s, i) => ({ ...s, originalIdx: i })).filter(s => s.date);
+  const withoutDate = stops.map((s, i) => ({ ...s, originalIdx: i })).filter(s => !s.date);
 
-  const grouped = withDate.reduce((acc, stop, originalIdx) => {
+  const grouped = withDate.reduce((acc, stop) => {
     const key = stop.date;
     if (!acc[key]) acc[key] = [];
-    acc[key].push({ ...stop, originalIdx: stops.indexOf(stop) });
+    acc[key].push(stop);
     return acc;
   }, {});
 
@@ -175,7 +118,7 @@ function Planning({ stops, save }) {
   const formatDayHeader = (dateStr) => {
     const d = new Date(dateStr);
     const today = new Date();
-    today.setHours(0,0,0,0);
+    today.setHours(0, 0, 0, 0);
     const diff = Math.round((d - today) / (1000 * 60 * 60 * 24));
     const label = diff === 0 ? "Aujourd'hui" : diff === 1 ? "Demain" : diff === -1 ? "Hier" : null;
     return {
@@ -183,6 +126,62 @@ function Planning({ stops, save }) {
       date: d.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" }),
       label,
     };
+  };
+
+  // Reorder stops within a day after drag
+  const handleDrop = (dateStr) => {
+    if (!dragItem.current || !dragOver.current) return;
+    if (dragItem.current.dateStr !== dateStr) return;
+    if (dragItem.current.localIdx === dragOver.current.localIdx) return;
+
+    const dayStops = [...grouped[dateStr]];
+    const from = dragItem.current.localIdx;
+    const to = dragOver.current.localIdx;
+
+    // Reorder within the day
+    const [moved] = dayStops.splice(from, 1);
+    dayStops.splice(to, 0, moved);
+
+    // Rebuild the full stops array: replace original positions of this day's stops
+    const originalIndices = grouped[dateStr].map(s => s.originalIdx);
+    const newStops = [...stops];
+    dayStops.forEach((stop, i) => {
+      newStops[originalIndices[i]] = { ville: stop.ville, date: stop.date, note: stop.note };
+    });
+
+    save("stops", newStops);
+    dragItem.current = null;
+    dragOver.current = null;
+    setDraggingKey(null);
+  };
+
+  // Touch drag support
+  const touchStartPos = useRef(null);
+  const touchDragInfo = useRef(null);
+
+  const handleTouchStart = (e, dateStr, localIdx) => {
+    touchStartPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    touchDragInfo.current = { dateStr, localIdx };
+    dragItem.current = { dateStr, localIdx };
+    setDraggingKey(`${dateStr}-${localIdx}`);
+  };
+
+  const handleTouchMove = (e) => {
+    if (!dragItem.current) return;
+    const touch = e.touches[0];
+    const el = document.elementFromPoint(touch.clientX, touch.clientY);
+    if (el) {
+      const stopEl = el.closest("[data-drag-idx]");
+      if (stopEl) {
+        const idx = parseInt(stopEl.getAttribute("data-drag-idx"));
+        const dStr = stopEl.getAttribute("data-drag-date");
+        dragOver.current = { dateStr: dStr, localIdx: idx };
+      }
+    }
+  };
+
+  const handleTouchEnd = (dateStr) => {
+    handleDrop(dateStr);
   };
 
   return (
@@ -223,6 +222,9 @@ function Planning({ stops, save }) {
       <div className="planning-timeline">
         {sortedDates.map((dateStr) => {
           const { day, date, label } = formatDayHeader(dateStr);
+          const dayStops = grouped[dateStr];
+          const canDrag = dayStops.length > 1;
+
           return (
             <div key={dateStr} className="planning-day">
               <div className="planning-day-header">
@@ -242,21 +244,44 @@ function Planning({ stops, save }) {
                 >+</button>
               </div>
 
-              <div className="planning-day-stops">
-                {grouped[dateStr].map((stop, si) => (
-                  <div key={si} className="planning-stop">
-                    <div className="planning-stop-inner">
-                      <div className="planning-stop-top">
-                        <span className="planning-stop-city">{stop.ville}</span>
-                        <div className="stop-actions">
-                          <button className="btn-icon" onClick={() => { setEditIdx(stop.originalIdx); setShowAdd(false); }}>✏️</button>
-                          <button className="btn-icon" onClick={() => remove(stop.originalIdx)}>🗑️</button>
+              <div
+                className="planning-day-stops"
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={() => handleDrop(dateStr)}
+                onTouchEnd={() => handleTouchEnd(dateStr)}
+              >
+                {dayStops.map((stop, si) => {
+                  const key = `${dateStr}-${si}`;
+                  const isDragging = draggingKey === key;
+                  const isOver = dragOver.current && dragOver.current.dateStr === dateStr && dragOver.current.localIdx === si && draggingKey !== key;
+
+                  return (
+                    <div
+                      key={si}
+                      className={`planning-stop${isDragging ? " dragging" : ""}${isOver ? " drag-over" : ""}`}
+                      draggable={canDrag}
+                      data-drag-idx={si}
+                      data-drag-date={dateStr}
+                      onDragStart={() => { dragItem.current = { dateStr, localIdx: si }; setDraggingKey(key); }}
+                      onDragEnter={() => { dragOver.current = { dateStr, localIdx: si }; }}
+                      onDragEnd={() => { dragItem.current = null; dragOver.current = null; setDraggingKey(null); }}
+                      onTouchStart={(e) => canDrag && handleTouchStart(e, dateStr, si)}
+                      onTouchMove={canDrag ? handleTouchMove : undefined}
+                    >
+                      <div className="planning-stop-inner">
+                        <div className="planning-stop-top">
+                          {canDrag && <span className="drag-handle" title="Réorganiser">⠿</span>}
+                          <span className="planning-stop-city">{stop.ville}</span>
+                          <div className="stop-actions">
+                            <button className="btn-icon" onClick={() => { setEditIdx(stop.originalIdx); setShowAdd(false); }}>✏️</button>
+                            <button className="btn-icon" onClick={() => remove(stop.originalIdx)}>🗑️</button>
+                          </div>
                         </div>
+                        {stop.note && <p className="stop-note">{stop.note}</p>}
                       </div>
-                      {stop.note && <p className="stop-note">{stop.note}</p>}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           );
@@ -273,23 +298,20 @@ function Planning({ stops, save }) {
               </div>
             </div>
             <div className="planning-day-stops">
-              {withoutDate.map((stop, si) => {
-                const origIdx = stops.indexOf(stop);
-                return (
-                  <div key={si} className="planning-stop">
-                    <div className="planning-stop-inner" style={{ borderLeft: "3px solid #DDDDDD" }}>
-                      <div className="planning-stop-top">
-                        <span className="planning-stop-city">{stop.ville}</span>
-                        <div className="stop-actions">
-                          <button className="btn-icon" onClick={() => { setEditIdx(origIdx); setShowAdd(false); }}>✏️</button>
-                          <button className="btn-icon" onClick={() => remove(origIdx)}>🗑️</button>
-                        </div>
+              {withoutDate.map((stop, si) => (
+                <div key={si} className="planning-stop">
+                  <div className="planning-stop-inner" style={{ borderLeft: "3px solid #DDDDDD" }}>
+                    <div className="planning-stop-top">
+                      <span className="planning-stop-city">{stop.ville}</span>
+                      <div className="stop-actions">
+                        <button className="btn-icon" onClick={() => { setEditIdx(stop.originalIdx); setShowAdd(false); }}>✏️</button>
+                        <button className="btn-icon" onClick={() => remove(stop.originalIdx)}>🗑️</button>
                       </div>
-                      {stop.note && <p className="stop-note">{stop.note}</p>}
                     </div>
+                    {stop.note && <p className="stop-note">{stop.note}</p>}
                   </div>
-                );
-              })}
+                </div>
+              ))}
             </div>
           </div>
         )}
@@ -444,9 +466,9 @@ function VoyageDetail({ voyageId, voyage, saveKey, onBack }) {
           ))}
         </div>
       </div>
-       {tab === 0 && <Planning stops={stops} save={save} />}
-       {tab === 1 && <Budget budget={budget} save={save} />}
-       {tab === 2 && <TodoList todos={todos} save={save} />}
+      {tab === 0 && <Planning stops={stops} save={save} />}
+      {tab === 1 && <Budget budget={budget} save={save} />}
+      {tab === 2 && <TodoList todos={todos} save={save} />}
     </>
   );
 }
@@ -604,16 +626,6 @@ export default function App() {
         .empty-icon { font-size: 2.5rem; margin-bottom: 0.75rem; }
         .empty-title { font-weight: 600; font-size: 1rem; color: #222; margin-bottom: 0.35rem; }
         .empty-sub { font-size: 0.85rem; color: #717171; }
-        .stops-list { display: flex; flex-direction: column; }
-        .stop-card { display: flex; gap: 1rem; padding-bottom: 1rem; }
-        .stop-left { display: flex; flex-direction: column; align-items: center; flex-shrink: 0; }
-        .stop-number { width: 28px; height: 28px; border-radius: 50%; background: #FF5A5F; color: #fff; font-size: 0.75rem; font-weight: 700; display: flex; align-items: center; justify-content: center; }
-        .stop-connector { width: 2px; flex: 1; background: #EBEBEB; margin: 4px 0; min-height: 20px; }
-        .stop-content { flex: 1; background: #fff; border: 1px solid #EBEBEB; border-radius: 12px; padding: 0.85rem 1rem; }
-        .stop-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.35rem; }
-        .stop-city { font-weight: 700; font-size: 1rem; color: #222; }
-        .stop-actions { display: flex; gap: 0.25rem; }
-        .stop-date { font-size: 0.78rem; color: #717171; display: block; margin-bottom: 0.4rem; }
         .stop-note { font-size: 0.83rem; color: #484848; line-height: 1.4; }
 
         /* Planning */
@@ -630,10 +642,17 @@ export default function App() {
         .btn-add-day { background: #F7F7F7; border: none; width: 28px; height: 28px; border-radius: 50%; cursor: pointer; font-size: 1rem; color: #FF5A5F; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-weight: 700; transition: background 0.15s; margin-top: 2px; }
         .btn-add-day:hover { background: #FFE8E8; }
         .planning-day-stops { padding-left: 1.75rem; display: flex; flex-direction: column; gap: 0.5rem; }
-        .planning-stop { }
+        .planning-stop { transition: opacity 0.15s, transform 0.15s; cursor: default; }
+        .planning-stop[draggable="true"] { cursor: grab; }
+        .planning-stop[draggable="true"]:active { cursor: grabbing; }
+        .planning-stop.dragging { opacity: 0.35; transform: scale(0.98); }
+        .planning-stop.drag-over .planning-stop-inner { border-top: 2px solid #FF5A5F; }
         .planning-stop-inner { background: #fff; border: 1px solid #EBEBEB; border-left: 3px solid #FF5A5F; border-radius: 10px; padding: 0.85rem 1rem; }
-        .planning-stop-top { display: flex; justify-content: space-between; align-items: center; }
-        .planning-stop-city { font-weight: 700; font-size: 0.95rem; color: #222; }
+        .planning-stop-top { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
+        .planning-stop-city { font-weight: 700; font-size: 0.95rem; color: #222; flex: 1; }
+        .stop-actions { display: flex; gap: 0.25rem; flex-shrink: 0; }
+        .drag-handle { font-size: 1.1rem; color: #BBBBBB; cursor: grab; user-select: none; flex-shrink: 0; line-height: 1; }
+        .drag-handle:active { cursor: grabbing; }
 
         .budget-hero { background: linear-gradient(135deg, #FF5A5F, #FC642D); border-radius: 16px; padding: 1.5rem; margin-bottom: 1.25rem; color: #fff; }
         .budget-hero-label { font-size: 0.8rem; opacity: 0.85; font-weight: 500; margin-bottom: 0.3rem; }
