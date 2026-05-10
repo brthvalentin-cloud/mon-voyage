@@ -15,8 +15,8 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
-const TABS = ["Parcours", "Budget", "To-Do", "Planning"];
-const TAB_ICONS = ["🗺️", "💰", "✅", "📅"];
+const TABS = ["Planning", "Budget", "To-Do"];
+const TAB_ICONS = ["📅", "💰", "✅"];
 const defaultVoyageData = { stops: [], budget: { items: [] }, todos: [] };
 
 function useVoyages() {
