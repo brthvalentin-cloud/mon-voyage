@@ -8,6 +8,7 @@ import {
   TouchSensor,
   useSensor,
   useSensors,
+  DragOverlay,
 } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -35,14 +36,27 @@ const TAB_ICONS = ["📅", "💰", "✅"];
 const defaultVoyageData = { stops: [], budget: { items: [] }, todos: [] };
 
 const STOP_CATEGORIES = [
-  { id: "avion",      label: "Avion",       emoji: "✈️",  color: "#5B8DEF" },
-  { id: "train",      label: "Train",       emoji: "🚆",  color: "#F5A623" },
-  { id: "bus",        label: "Bus",         emoji: "🚌",  color: "#7ED321" },
-  { id: "voiture",    label: "Voiture",     emoji: "🚗",  color: "#9B59B6" },
-  { id: "activite",   label: "Activité",    emoji: "🎯",  color: "#E74C3C" },
-  { id: "restaurant", label: "Restaurant",  emoji: "🍽️", color: "#E67E22" },
+  { id: "avion",      label: "Avion",      emoji: "✈️",  color: "#5B8DEF" },
+  { id: "train",      label: "Train",      emoji: "🚆",  color: "#F5A623" },
+  { id: "bus",        label: "Bus",        emoji: "🚌",  color: "#7ED321" },
+  { id: "voiture",    label: "Voiture",    emoji: "🚗",  color: "#9B59B6" },
+  { id: "activite",   label: "Activite",   emoji: "🎯",  color: "#E74C3C" },
+  { id: "restaurant", label: "Restaurant", emoji: "🍽️", color: "#E67E22" },
 ];
 const getCat = (id) => STOP_CATEGORIES.find((c) => c.id === id) || STOP_CATEGORIES[0];
+
+// Attach a stable unique ID to each stop (persisted in Firebase)
+function ensureStopIds(stops) {
+  let changed = false;
+  const result = stops.map((s) => {
+    if (!s._id) {
+      changed = true;
+      return { ...s, _id: "s_" + Math.random().toString(36).slice(2, 9) };
+    }
+    return s;
+  });
+  return { stops: result, changed };
+}
 
 function useVoyages() {
   const [voyages, setVoyages] = useState({});
@@ -81,7 +95,7 @@ function StopForm({ initial, onSave, onCancel, title }) {
       </div>
       <div className="form-body">
         <div className="input-group">
-          <label className="input-label">Catégorie</label>
+          <label className="input-label">Categorie</label>
           <div className="cat-picker">
             {STOP_CATEGORIES.map((cat) => (
               <button
@@ -101,7 +115,7 @@ function StopForm({ initial, onSave, onCancel, title }) {
           <label className="input-label">Description</label>
           <input
             className="inp"
-            placeholder="Ex: Vol Paris→Rome, Musée du Louvre…"
+            placeholder="Ex: Vol Paris-Rome, Musee du Louvre..."
             value={form.ville}
             onChange={(e) => setForm({ ...form, ville: e.target.value })}
           />
@@ -119,7 +133,7 @@ function StopForm({ initial, onSave, onCancel, title }) {
           <label className="input-label">Note</label>
           <input
             className="inp"
-            placeholder="Détails, confirmation, adresse…"
+            placeholder="Details, confirmation, adresse..."
             value={form.note}
             onChange={(e) => setForm({ ...form, note: e.target.value })}
           />
@@ -140,9 +154,39 @@ function sortStops(stops) {
   });
 }
 
-// ─── SORTABLE STOP CARD ───────────────────────────────────────────────────────
-function SortableStopCard({ stop, canDrag, onEdit, onRemove }) {
+// ─── STOP CARD (display only, no drag logic) ──────────────────────────────────
+function StopCardContent({ stop, canDrag, dragHandleProps, isDragging }) {
   const cat = getCat(stop.categorie);
+  return (
+    <div className="planning-stop-inner" style={{ borderLeftColor: cat.color, boxShadow: isDragging ? "0 8px 24px rgba(0,0,0,0.15)" : undefined }}>
+      <div className="planning-stop-top">
+        <div className="stop-cat-badge" style={{ background: cat.color + "18", color: cat.color }}>
+          {cat.emoji}
+        </div>
+        <div className="stop-main">
+          <span className="planning-stop-city">{stop.ville}</span>
+          {stop.note && <p className="stop-note">{stop.note}</p>}
+        </div>
+        <div className="stop-right">
+          {canDrag && (
+            <span className="drag-handle" title="Deplacer" {...dragHandleProps}>
+              ⠿
+            </span>
+          )}
+          {stop.onEdit && (
+            <div className="stop-actions">
+              <button className="btn-icon" onClick={stop.onEdit}>✏️</button>
+              <button className="btn-icon" onClick={stop.onRemove}>🗑️</button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── SORTABLE STOP ────────────────────────────────────────────────────────────
+function SortableStop({ stop, canDrag, onEdit, onRemove }) {
   const {
     attributes,
     listeners,
@@ -150,79 +194,68 @@ function SortableStopCard({ stop, canDrag, onEdit, onRemove }) {
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: stop.sortId });
+  } = useSortable({ id: stop._id });
 
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.4 : 1,
-    zIndex: isDragging ? 999 : "auto",
+    opacity: isDragging ? 0 : 1, // hide original while overlay is shown
     position: "relative",
   };
 
   return (
-    <div ref={setNodeRef} style={style} className={"planning-stop" + (isDragging ? " dragging" : "")}>
-      <div className="planning-stop-inner" style={{ borderLeftColor: cat.color }}>
-        <div className="planning-stop-top">
-          <div className="stop-cat-badge" style={{ background: cat.color + "18", color: cat.color }}>
-            {cat.emoji}
-          </div>
-          <div className="stop-main">
-            <span className="planning-stop-city">{stop.ville}</span>
-            {stop.note && <p className="stop-note">{stop.note}</p>}
-          </div>
-          <div className="stop-right">
-            {canDrag && (
-              <span
-                className="drag-handle"
-                title="Déplacer"
-                {...attributes}
-                {...listeners}
-              >
-                ⠿
-              </span>
-            )}
-            <div className="stop-actions">
-              <button className="btn-icon" onClick={onEdit}>✏️</button>
-              <button className="btn-icon" onClick={onRemove}>🗑️</button>
-            </div>
-          </div>
-        </div>
-      </div>
+    <div ref={setNodeRef} style={style} className="planning-stop">
+      <StopCardContent
+        stop={{ ...stop, onEdit, onRemove }}
+        canDrag={canDrag}
+        dragHandleProps={{ ...attributes, ...listeners }}
+        isDragging={false}
+      />
     </div>
   );
 }
 
 // ─── PLANNING ─────────────────────────────────────────────────────────────────
-function Planning({ stops, save }) {
+function Planning({ stops: rawStops, save }) {
   const [editIdx, setEditIdx] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
   const [addDate, setAddDate] = useState("");
+  const [activeStop, setActiveStop] = useState(null); // for DragOverlay
 
-  // dnd-kit sensors: activate drag only after 8px movement (avoids accidental drags on tap)
+  // Ensure every stop has a stable _id
+  const [stops, setStops] = useState(() => {
+    const { stops: s } = ensureStopIds(rawStops);
+    return s;
+  });
+
+  useEffect(() => {
+    const { stops: s, changed } = ensureStopIds(rawStops);
+    setStops(s);
+    if (changed) save("stops", s);
+  }, [rawStops]);
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } })
+    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 8 } })
   );
 
   const addStop = (form) => {
-    save("stops", sortStops([...stops, form]));
+    const newStop = { ...form, _id: "s_" + Math.random().toString(36).slice(2, 9) };
+    save("stops", sortStops([...stops, newStop]));
     setShowAdd(false);
     setAddDate("");
   };
 
   const editStop = (form) => {
-    save("stops", sortStops(stops.map((s, i) => (i === editIdx ? form : s))));
+    const updated = stops.map((s, i) => (i === editIdx ? { ...form, _id: s._id } : s));
+    save("stops", sortStops(updated));
     setEditIdx(null);
   };
 
-  const removeStop = (i) => save("stops", stops.filter((_, idx) => idx !== i));
+  const removeStop = (id) => save("stops", stops.filter((s) => s._id !== id));
 
-  // Attach a unique sortId to each stop for dnd-kit
-  const stopsWithId = stops.map((s, i) => ({ ...s, originalIdx: i, sortId: `stop-${i}-${s.date}-${s.ville}` }));
-
-  const withDate = stopsWithId.filter((s) => s.date);
-  const withoutDate = stopsWithId.filter((s) => !s.date);
+  const withDate = stops.filter((s) => s.date);
+  const withoutDate = stops.filter((s) => !s.date);
 
   const grouped = withDate.reduce((acc, stop) => {
     if (!acc[stop.date]) acc[stop.date] = [];
@@ -231,29 +264,31 @@ function Planning({ stops, save }) {
   }, {});
   const sortedDates = Object.keys(grouped).sort();
 
+  const handleDragStart = (event) => {
+    const { active } = event;
+    const found = stops.find((s) => s._id === active.id);
+    setActiveStop(found || null);
+  };
+
   const handleDragEnd = (dateStr, event) => {
+    setActiveStop(null);
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
     const dayStops = grouped[dateStr];
-    const oldIndex = dayStops.findIndex((s) => s.sortId === active.id);
-    const newIndex = dayStops.findIndex((s) => s.sortId === over.id);
+    const oldIndex = dayStops.findIndex((s) => s._id === active.id);
+    const newIndex = dayStops.findIndex((s) => s._id === over.id);
     if (oldIndex === -1 || newIndex === -1) return;
 
+    // Reorder within this day
     const reordered = arrayMove(dayStops, oldIndex, newIndex);
 
-    // Rebuild full stops array: replace this day's stops in their original positions
-    const origIndices = dayStops.map((s) => s.originalIdx);
-    const newStops = [...stops];
-    reordered.forEach((stop, i) => {
-      newStops[origIndices[i]] = {
-        ville: stop.ville,
-        date: stop.date,
-        note: stop.note,
-        categorie: stop.categorie,
-      };
-    });
-    save("stops", newStops);
+    // Rebuild full stops array preserving order of other days
+    const newStops = stops.filter((s) => s.date !== dateStr);
+    // Insert reordered day stops back (they keep their original dates)
+    reordered.forEach((s) => newStops.push(s));
+    // Re-sort everything by date
+    save("stops", sortStops(newStops));
   };
 
   const formatDayHeader = (dateStr) => {
@@ -273,12 +308,12 @@ function Planning({ stops, save }) {
     <div className="section">
       {!showAdd && editIdx === null && (
         <button className="btn-add-trip" onClick={() => setShowAdd(true)}>
-          <span className="btn-add-icon">+</span> Ajouter une étape
+          <span className="btn-add-icon">+</span> Ajouter une etape
         </button>
       )}
       {showAdd && (
         <StopForm
-          title="Nouvelle étape"
+          title="Nouvelle etape"
           initial={{ ville: "", date: addDate, note: "", categorie: "avion" }}
           onSave={addStop}
           onCancel={() => { setShowAdd(false); setAddDate(""); }}
@@ -286,7 +321,7 @@ function Planning({ stops, save }) {
       )}
       {editIdx !== null && (
         <StopForm
-          title="Modifier l'étape"
+          title="Modifier l'etape"
           initial={stops[editIdx]}
           onSave={editStop}
           onCancel={() => setEditIdx(null)}
@@ -295,8 +330,8 @@ function Planning({ stops, save }) {
       {stops.length === 0 && !showAdd && (
         <div className="empty-state">
           <div className="empty-icon">📅</div>
-          <p className="empty-title">Aucune étape planifiée</p>
-          <p className="empty-sub">Ajoutez des étapes avec des dates pour voir votre planning</p>
+          <p className="empty-title">Aucune etape planifiee</p>
+          <p className="empty-sub">Ajoutez des etapes avec des dates pour voir votre planning</p>
         </div>
       )}
 
@@ -327,24 +362,39 @@ function Planning({ stops, save }) {
               <DndContext
                 sensors={sensors}
                 collisionDetection={closestCenter}
+                onDragStart={handleDragStart}
                 onDragEnd={(e) => handleDragEnd(dateStr, e)}
               >
                 <SortableContext
-                  items={dayStops.map((s) => s.sortId)}
+                  items={dayStops.map((s) => s._id)}
                   strategy={verticalListSortingStrategy}
                 >
                   <div className="planning-day-stops">
-                    {dayStops.map((stop) => (
-                      <SortableStopCard
-                        key={stop.sortId}
+                    {dayStops.map((stop, i) => (
+                      <SortableStop
+                        key={stop._id}
                         stop={stop}
                         canDrag={canDrag}
-                        onEdit={() => { setEditIdx(stop.originalIdx); setShowAdd(false); }}
-                        onRemove={() => removeStop(stop.originalIdx)}
+                        onEdit={() => { setEditIdx(stops.findIndex((s) => s._id === stop._id)); setShowAdd(false); }}
+                        onRemove={() => removeStop(stop._id)}
                       />
                     ))}
                   </div>
                 </SortableContext>
+
+                {/* Floating card shown while dragging */}
+                <DragOverlay dropAnimation={{ duration: 200, easing: "ease" }}>
+                  {activeStop ? (
+                    <div className="planning-stop" style={{ rotate: "1.5deg" }}>
+                      <StopCardContent
+                        stop={activeStop}
+                        canDrag={false}
+                        dragHandleProps={{}}
+                        isDragging={true}
+                      />
+                    </div>
+                  ) : null}
+                </DragOverlay>
               </DndContext>
             </div>
           );
@@ -364,7 +414,7 @@ function Planning({ stops, save }) {
               {withoutDate.map((stop) => {
                 const cat = getCat(stop.categorie);
                 return (
-                  <div key={stop.sortId} className="planning-stop">
+                  <div key={stop._id} className="planning-stop">
                     <div className="planning-stop-inner" style={{ borderLeftColor: "#DDDDDD" }}>
                       <div className="planning-stop-top">
                         <div className="stop-cat-badge" style={{ background: cat.color + "18", color: cat.color }}>
@@ -376,8 +426,8 @@ function Planning({ stops, save }) {
                         </div>
                         <div className="stop-right">
                           <div className="stop-actions">
-                            <button className="btn-icon" onClick={() => { setEditIdx(stop.originalIdx); setShowAdd(false); }}>✏️</button>
-                            <button className="btn-icon" onClick={() => removeStop(stop.originalIdx)}>🗑️</button>
+                            <button className="btn-icon" onClick={() => { setEditIdx(stops.findIndex((s) => s._id === stop._id)); setShowAdd(false); }}>✏️</button>
+                            <button className="btn-icon" onClick={() => removeStop(stop._id)}>🗑️</button>
                           </div>
                         </div>
                       </div>
@@ -398,9 +448,9 @@ function Budget({ budget, save }) {
   const [form, setForm] = useState({ label: "", montant: "", categorie: "Transport" });
   const [showForm, setShowForm] = useState(false);
   const [showDetail, setShowDetail] = useState(false);
-  const categories = ["Transport", "Hébergement", "Resto", "Activités", "Autre"];
-  const catEmoji = { Transport: "✈️", Hébergement: "🏠", Resto: "🍽️", Activités: "🎯", Autre: "📦" };
-  const catColors = { Transport: "#FF5A5F", Hébergement: "#00A699", Resto: "#FC642D", Activités: "#484848", Autre: "#767676" };
+  const categories = ["Transport", "Hebergement", "Resto", "Activites", "Autre"];
+  const catEmoji = { Transport: "✈️", Hebergement: "🏠", Resto: "🍽️", Activites: "🎯", Autre: "📦" };
+  const catColors = { Transport: "#FF5A5F", Hebergement: "#00A699", Resto: "#FC642D", Activites: "#484848", Autre: "#767676" };
   const items = budget.items || [];
   const total = items.reduce((s, i) => s + parseFloat(i.montant || 0), 0);
   const add = () => {
@@ -418,7 +468,7 @@ function Budget({ budget, save }) {
   return (
     <div className="section">
       <div className="budget-hero" onClick={() => setShowDetail(!showDetail)} style={{ cursor: "pointer" }}>
-        <p className="budget-hero-label">Total des dépenses</p>
+        <p className="budget-hero-label">Total des depenses</p>
         <p className="budget-hero-amount">{total.toFixed(2)} €</p>
         <div className="budget-chips">
           {categories.filter((c) => byCategorie[c].length > 0).map((cat) => (
@@ -428,7 +478,7 @@ function Budget({ budget, save }) {
           ))}
         </div>
         <p style={{ fontSize: "0.75rem", opacity: 0.7, marginTop: "0.75rem" }}>
-          {showDetail ? "▲ Masquer le détail" : "▼ Voir le détail par catégorie"}
+          {showDetail ? "▲ Masquer le detail" : "▼ Voir le detail par categorie"}
         </p>
       </div>
       {showDetail && (
@@ -453,13 +503,13 @@ function Budget({ budget, save }) {
       )}
       {!showForm && (
         <button className="btn-add-trip" onClick={() => setShowForm(true)}>
-          <span className="btn-add-icon">+</span> Ajouter une dépense
+          <span className="btn-add-icon">+</span> Ajouter une depense
         </button>
       )}
       {showForm && (
         <div className="form-card">
           <div className="form-header">
-            <span>Nouvelle dépense</span>
+            <span>Nouvelle depense</span>
             <button className="btn-close" onClick={() => setShowForm(false)}>✕</button>
           </div>
           <div className="form-body">
@@ -473,7 +523,7 @@ function Budget({ budget, save }) {
                 <input className="inp" type="number" placeholder="0.00" value={form.montant} onChange={(e) => setForm({ ...form, montant: e.target.value })} />
               </div>
               <div className="input-group" style={{ flex: 1 }}>
-                <label className="input-label">Catégorie</label>
+                <label className="input-label">Categorie</label>
                 <select className="inp" value={form.categorie} onChange={(e) => setForm({ ...form, categorie: e.target.value })}>
                   {categories.map((c) => <option key={c}>{c}</option>)}
                 </select>
@@ -486,7 +536,7 @@ function Budget({ budget, save }) {
       {items.length === 0 && !showForm && (
         <div className="empty-state">
           <div className="empty-icon">💳</div>
-          <p className="empty-title">Suivez vos dépenses</p>
+          <p className="empty-title">Suivez vos depenses</p>
           <p className="empty-sub">Gardez un oeil sur votre budget de voyage</p>
         </div>
       )}
@@ -534,7 +584,7 @@ function TodoList({ todos, save }) {
       {todos.length > 0 && (
         <div className="progress-card">
           <div className="progress-top">
-            <span className="progress-label">{done} sur {todos.length} tache{todos.length > 1 ? "s" : ""} completee{done > 1 ? "s" : ""}</span>
+            <span className="progress-label">{done} sur {todos.length} tache{todos.length > 1 ? "s" : ""}</span>
             <span className="progress-pct">{pct}%</span>
           </div>
           <div className="progress-bar">
@@ -805,9 +855,8 @@ export default function App() {
         .btn-add-day { background: #F7F7F7; border: none; width: 28px; height: 28px; border-radius: 50%; cursor: pointer; font-size: 1rem; color: #FF5A5F; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-weight: 700; transition: background 0.15s; margin-top: 2px; }
         .btn-add-day:hover { background: #FFE8E8; }
         .planning-day-stops { padding-left: 1.75rem; display: flex; flex-direction: column; gap: 0.5rem; }
-        .planning-stop { transition: opacity 0.15s; }
-        .planning-stop.dragging { opacity: 0.4; }
-        .planning-stop-inner { background: #fff; border: 1px solid #EBEBEB; border-left: 3px solid #FF5A5F; border-radius: 10px; padding: 0.75rem 0.85rem; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
+        .planning-stop { touch-action: manipulation; }
+        .planning-stop-inner { background: #fff; border: 1px solid #EBEBEB; border-left: 3px solid #FF5A5F; border-radius: 10px; padding: 0.75rem 0.85rem; }
         .planning-stop-top { display: flex; align-items: flex-start; gap: 0.65rem; }
         .stop-cat-badge { width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; flex-shrink: 0; }
         .stop-main { flex: 1; min-width: 0; }
