@@ -433,7 +433,7 @@ function Budget({ budget, save }) {
   const [showForm, setShowForm] = useState(false);
   const [showDetail, setShowDetail] = useState(false);
   const categories = ["Transport", "Hebergement", "Resto", "Activites", "Autre"];
-  const catEmoji = { Transport: "✈️", Hebergement: "🏠", Resto: "🍽️", Activites: "🎯", Autre: "📦" };
+  const catEmoji = { Transport: "🚆", Hebergement: "🏠", Resto: "🍽️", Activites: "🎯", Autre: "📦" };
   const catColors = { Transport: "#FF5A5F", Hebergement: "#00A699", Resto: "#FC642D", Activites: "#484848", Autre: "#767676" };
   const items = budget.items || [];
   const total = items.reduce((s, i) => s + parseFloat(i.montant || 0), 0);
@@ -595,7 +595,7 @@ function VoyageList({ voyages, onCreate, onSelect, onDelete }) {
     <>
       <div className="home-header">
         <p className="home-eyebrow">Planificateur collaboratif</p>
-        <h1 className="home-title">Mes Voyages ✈️</h1>
+        <h1 className="home-title">Mes Voyages 🚆</h1>
       </div>
       <div className="section">
         {!showForm && <button className="btn-new-voyage" onClick={() => setShowForm(true)}><span className="btn-new-icon">+</span> Nouveau voyage</button>}
