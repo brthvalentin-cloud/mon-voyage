@@ -48,10 +48,7 @@ const getCat = (id) => STOP_CATEGORIES.find((c) => c.id === id) || STOP_CATEGORI
 function ensureStopIds(stops) {
   let changed = false;
   const result = stops.map((s) => {
-    if (!s._id) {
-      changed = true;
-      return { ...s, _id: "s_" + Math.random().toString(36).slice(2, 9) };
-    }
+    if (!s._id) { changed = true; return { ...s, _id: "s_" + Math.random().toString(36).slice(2, 9) }; }
     return s;
   });
   return { stops: result, changed };
@@ -62,18 +59,12 @@ function useVoyages() {
   const [loaded, setLoaded] = useState(false);
   useEffect(() => {
     const r = ref(db, "voyages");
-    const unsub = onValue(r, (snap) => {
-      setVoyages(snap.val() || {});
-      setLoaded(true);
-    });
+    const unsub = onValue(r, (snap) => { setVoyages(snap.val() || {}); setLoaded(true); });
     return () => unsub();
   }, []);
   const createVoyage = (name, destination, dates) => {
     const id = "voyage_" + Date.now();
-    set(ref(db, `voyages/${id}`), {
-      meta: { name, destination, dates, createdAt: Date.now() },
-      ...defaultVoyageData,
-    });
+    set(ref(db, `voyages/${id}`), { meta: { name, destination, dates, createdAt: Date.now() }, ...defaultVoyageData });
     return id;
   };
   const deleteVoyage = (id) => fbRemove(ref(db, `voyages/${id}`));
@@ -81,11 +72,39 @@ function useVoyages() {
   return { voyages, loaded, createVoyage, deleteVoyage, saveVoyageKey };
 }
 
-// ─── STOP FORM ────────────────────────────────────────────────────────────────
-function StopForm({ initial, onSave, onCancel, title }) {
-  const [form, setForm] = useState(
-    initial || { ville: "", date: "", note: "", categorie: "avion" }
+// ─── INLINE EDIT FORM (compact, replaces the tile) ───────────────────────────
+function InlineEditForm({ stop, onSave, onCancel }) {
+  const [form, setForm] = useState({ ...stop });
+  return (
+    <div className="inline-edit-form">
+      <div className="cat-picker cat-picker-small">
+        {STOP_CATEGORIES.map((cat) => (
+          <button
+            key={cat.id}
+            className={"cat-btn" + (form.categorie === cat.id ? " cat-btn-active" : "")}
+            style={form.categorie === cat.id ? { borderColor: cat.color, background: cat.color + "18" } : {}}
+            onClick={() => setForm({ ...form, categorie: cat.id })}
+            type="button"
+          >
+            <span className="cat-btn-emoji">{cat.emoji}</span>
+            <span className="cat-btn-label">{cat.label}</span>
+          </button>
+        ))}
+      </div>
+      <input className="inp" placeholder="Description" value={form.ville} onChange={(e) => setForm({ ...form, ville: e.target.value })} />
+      <input className="inp" type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
+      <input className="inp" placeholder="Note" value={form.note || ""} onChange={(e) => setForm({ ...form, note: e.target.value })} />
+      <div className="inline-edit-actions">
+        <button className="btn-cancel-small" onClick={onCancel}>Annuler</button>
+        <button className="btn-save-small" onClick={() => { if (form.ville.trim()) onSave(form); }}>Enregistrer</button>
+      </div>
+    </div>
   );
+}
+
+// ─── STOP FORM (add new) ─────────────────────────────────────────────────────
+function StopForm({ initial, onSave, onCancel, title }) {
+  const [form, setForm] = useState(initial || { ville: "", date: "", note: "", categorie: "avion" });
   return (
     <div className="form-card">
       <div className="form-header">
@@ -122,9 +141,7 @@ function StopForm({ initial, onSave, onCancel, title }) {
           <label className="input-label">Note</label>
           <input className="inp" placeholder="Details, confirmation, adresse..." value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />
         </div>
-        <button className="btn-primary" onClick={() => { if (form.ville.trim()) onSave(form); }}>
-          Enregistrer
-        </button>
+        <button className="btn-primary" onClick={() => { if (form.ville.trim()) onSave(form); }}>Enregistrer</button>
       </div>
     </div>
   );
@@ -138,34 +155,23 @@ function sortStops(stops) {
   });
 }
 
-// ─── STOP CARD CONTENT (shared between sortable and overlay) ──────────────────
-function StopCardInner({ stop, canDrag, handleProps, isOverlay }) {
+// ─── STOP CARD INNER ─────────────────────────────────────────────────────────
+function StopCardInner({ stop, canDrag, handleProps, isOverlay, onEdit, onRemove }) {
   const cat = getCat(stop.categorie);
   return (
-    <div
-      className="planning-stop-inner"
-      style={{
-        borderLeftColor: cat.color,
-        boxShadow: isOverlay ? "0 12px 32px rgba(0,0,0,0.18)" : undefined,
-        background: "#fff",
-      }}
-    >
+    <div className="planning-stop-inner" style={{ borderLeftColor: cat.color, boxShadow: isOverlay ? "0 12px 32px rgba(0,0,0,0.18)" : undefined }}>
       <div className="planning-stop-top">
-        <div className="stop-cat-badge" style={{ background: cat.color + "18", color: cat.color }}>
-          {cat.emoji}
-        </div>
+        <div className="stop-cat-badge" style={{ background: cat.color + "18", color: cat.color }}>{cat.emoji}</div>
         <div className="stop-main">
           <span className="planning-stop-city">{stop.ville}</span>
           {stop.note && <p className="stop-note">{stop.note}</p>}
         </div>
         <div className="stop-right">
-          {canDrag && (
-            <span className="drag-handle" title="Deplacer" {...handleProps}>⠿</span>
-          )}
-          {!isOverlay && stop.onEdit && (
+          {canDrag && <span className="drag-handle" title="Deplacer" {...handleProps}>⠿</span>}
+          {!isOverlay && (
             <div className="stop-actions">
-              <button className="btn-icon" onClick={stop.onEdit}>✏️</button>
-              <button className="btn-icon" onClick={stop.onRemove}>🗑️</button>
+              <button className="btn-icon" onClick={onEdit}>✏️</button>
+              <button className="btn-icon" onClick={onRemove}>🗑️</button>
             </div>
           )}
         </div>
@@ -174,42 +180,46 @@ function StopCardInner({ stop, canDrag, handleProps, isOverlay }) {
   );
 }
 
-// ─── SORTABLE STOP ────────────────────────────────────────────────────────────
-function SortableStop({ stop, canDrag, onEdit, onRemove }) {
+// ─── SORTABLE STOP — shows inline edit form when editing ─────────────────────
+function SortableStop({ stop, canDrag, editingId, onStartEdit, onSaveEdit, onCancelEdit, onRemove }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: stop._id });
+  const isEditing = editingId === stop._id;
+
   return (
     <div
       ref={setNodeRef}
       className="planning-stop"
-      style={{
-        transform: CSS.Transform.toString(transform),
-        transition,
-        // When dragging, make placeholder visible but faded
-        opacity: isDragging ? 0.25 : 1,
-      }}
+      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.25 : 1 }}
     >
-      <StopCardInner
-        stop={{ ...stop, onEdit, onRemove }}
-        canDrag={canDrag}
-        handleProps={{ ...attributes, ...listeners }}
-        isOverlay={false}
-      />
+      {isEditing ? (
+        <InlineEditForm
+          stop={stop}
+          onSave={(form) => onSaveEdit(stop._id, form)}
+          onCancel={onCancelEdit}
+        />
+      ) : (
+        <StopCardInner
+          stop={stop}
+          canDrag={canDrag}
+          handleProps={{ ...attributes, ...listeners }}
+          isOverlay={false}
+          onEdit={() => onStartEdit(stop._id)}
+          onRemove={() => onRemove(stop._id)}
+        />
+      )}
     </div>
   );
 }
 
 // ─── PLANNING ─────────────────────────────────────────────────────────────────
 function Planning({ stops: rawStops, save }) {
-  const [editIdx, setEditIdx] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
   const [addDate, setAddDate] = useState("");
+  const [editingId, setEditingId] = useState(null); // _id of stop being edited inline
   const [activeStop, setActiveStop] = useState(null);
-
-  // LOCAL stops state — updated instantly on drag end, Firebase syncs after
   const [stops, setStops] = useState(() => ensureStopIds(rawStops).stops);
-
-  // Sync from Firebase only when NOT dragging (to avoid fighting local state)
   const [isDragging, setIsDragging] = useState(false);
+
   useEffect(() => {
     if (isDragging) return;
     const { stops: s, changed } = ensureStopIds(rawStops);
@@ -231,11 +241,11 @@ function Planning({ stops: rawStops, save }) {
     setAddDate("");
   };
 
-  const editStop = (form) => {
-    const updated = sortStops(stops.map((s, i) => (i === editIdx ? { ...form, _id: s._id } : s)));
+  const saveEdit = (id, form) => {
+    const updated = sortStops(stops.map((s) => s._id === id ? { ...form, _id: s._id } : s));
     setStops(updated);
     save("stops", updated);
-    setEditIdx(null);
+    setEditingId(null);
   };
 
   const removeStop = (id) => {
@@ -255,6 +265,7 @@ function Planning({ stops: rawStops, save }) {
 
   const handleDragStart = ({ active }) => {
     setIsDragging(true);
+    setEditingId(null); // close any open edit
     setActiveStop(stops.find((s) => s._id === active.id) || null);
   };
 
@@ -262,19 +273,13 @@ function Planning({ stops: rawStops, save }) {
     setActiveStop(null);
     setIsDragging(false);
     if (!over || active.id === over.id) return;
-
     const dayStops = grouped[dateStr];
     const oldIndex = dayStops.findIndex((s) => s._id === active.id);
     const newIndex = dayStops.findIndex((s) => s._id === over.id);
     if (oldIndex === -1 || newIndex === -1) return;
-
     const reordered = arrayMove(dayStops, oldIndex, newIndex);
-
-    // Rebuild full stops array
     const otherStops = stops.filter((s) => s.date !== dateStr);
     const newStops = sortStops([...otherStops, ...reordered]);
-
-    // Update local state FIRST (instant) then Firebase
     setStops(newStops);
     save("stops", newStops);
   };
@@ -294,7 +299,7 @@ function Planning({ stops: rawStops, save }) {
 
   return (
     <div className="section">
-      {!showAdd && editIdx === null && (
+      {!showAdd && (
         <button className="btn-add-trip" onClick={() => setShowAdd(true)}>
           <span className="btn-add-icon">+</span> Ajouter une etape
         </button>
@@ -305,14 +310,6 @@ function Planning({ stops: rawStops, save }) {
           initial={{ ville: "", date: addDate, note: "", categorie: "avion" }}
           onSave={addStop}
           onCancel={() => { setShowAdd(false); setAddDate(""); }}
-        />
-      )}
-      {editIdx !== null && (
-        <StopForm
-          title="Modifier l'etape"
-          initial={stops[editIdx]}
-          onSave={editStop}
-          onCancel={() => setEditIdx(null)}
         />
       )}
       {stops.length === 0 && !showAdd && (
@@ -341,7 +338,7 @@ function Planning({ stops: rawStops, save }) {
                   <span className="planning-day-name">{day.charAt(0).toUpperCase() + day.slice(1)}</span>
                   <span className="planning-day-date">{date}</span>
                 </div>
-                <button className="btn-add-day" onClick={() => { setAddDate(dateStr); setShowAdd(true); setEditIdx(null); }}>+</button>
+                <button className="btn-add-day" onClick={() => { setAddDate(dateStr); setShowAdd(true); setEditingId(null); }}>+</button>
               </div>
 
               <DndContext
@@ -358,23 +355,20 @@ function Planning({ stops: rawStops, save }) {
                         key={stop._id}
                         stop={stop}
                         canDrag={canDrag}
-                        onEdit={() => { setEditIdx(stops.findIndex((s) => s._id === stop._id)); setShowAdd(false); }}
-                        onRemove={() => removeStop(stop._id)}
+                        editingId={editingId}
+                        onStartEdit={(id) => setEditingId(id)}
+                        onSaveEdit={saveEdit}
+                        onCancelEdit={() => setEditingId(null)}
+                        onRemove={removeStop}
                       />
                     ))}
                   </div>
                 </SortableContext>
 
-                {/* dropAnimation={null} = no return animation, card snaps instantly */}
                 <DragOverlay dropAnimation={null}>
                   {activeStop ? (
                     <div className="planning-stop" style={{ transform: "rotate(1.5deg)", cursor: "grabbing" }}>
-                      <StopCardInner
-                        stop={activeStop}
-                        canDrag={false}
-                        handleProps={{}}
-                        isOverlay={true}
-                      />
+                      <StopCardInner stop={activeStop} canDrag={false} handleProps={{}} isOverlay={true} />
                     </div>
                   ) : null}
                 </DragOverlay>
@@ -396,23 +390,32 @@ function Planning({ stops: rawStops, save }) {
             <div className="planning-day-stops">
               {withoutDate.map((stop) => {
                 const cat = getCat(stop.categorie);
+                const isEditing = editingId === stop._id;
                 return (
                   <div key={stop._id} className="planning-stop">
-                    <div className="planning-stop-inner" style={{ borderLeftColor: "#DDDDDD" }}>
-                      <div className="planning-stop-top">
-                        <div className="stop-cat-badge" style={{ background: cat.color + "18", color: cat.color }}>{cat.emoji}</div>
-                        <div className="stop-main">
-                          <span className="planning-stop-city">{stop.ville}</span>
-                          {stop.note && <p className="stop-note">{stop.note}</p>}
-                        </div>
-                        <div className="stop-right">
-                          <div className="stop-actions">
-                            <button className="btn-icon" onClick={() => { setEditIdx(stops.findIndex((s) => s._id === stop._id)); setShowAdd(false); }}>✏️</button>
-                            <button className="btn-icon" onClick={() => removeStop(stop._id)}>🗑️</button>
+                    {isEditing ? (
+                      <InlineEditForm
+                        stop={stop}
+                        onSave={(form) => saveEdit(stop._id, form)}
+                        onCancel={() => setEditingId(null)}
+                      />
+                    ) : (
+                      <div className="planning-stop-inner" style={{ borderLeftColor: "#DDDDDD" }}>
+                        <div className="planning-stop-top">
+                          <div className="stop-cat-badge" style={{ background: cat.color + "18", color: cat.color }}>{cat.emoji}</div>
+                          <div className="stop-main">
+                            <span className="planning-stop-city">{stop.ville}</span>
+                            {stop.note && <p className="stop-note">{stop.note}</p>}
+                          </div>
+                          <div className="stop-right">
+                            <div className="stop-actions">
+                              <button className="btn-icon" onClick={() => setEditingId(stop._id)}>✏️</button>
+                              <button className="btn-icon" onClick={() => removeStop(stop._id)}>🗑️</button>
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                 );
               })}
@@ -517,7 +520,6 @@ function TodoList({ todos, save }) {
   const add = () => { if (!input.trim()) return; save("todos", [...todos, { text: input, done: false }]); setInput(""); };
   const toggle = (i) => save("todos", todos.map((t, idx) => (idx === i ? { ...t, done: !t.done } : t)));
   const remove = (i) => save("todos", todos.filter((_, idx) => idx !== i));
-
   return (
     <div className="section">
       {todos.length > 0 && (
@@ -722,11 +724,19 @@ export default function App() {
         .empty-title { font-weight: 600; font-size: 1rem; color: #222; margin-bottom: 0.35rem; }
         .empty-sub { font-size: 0.85rem; color: #717171; }
         .cat-picker { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; }
+        .cat-picker-small { gap: 0.35rem; margin-bottom: 0.25rem; }
         .cat-btn { display: flex; flex-direction: column; align-items: center; gap: 0.25rem; padding: 0.6rem 0.4rem; border: 1.5px solid #EBEBEB; border-radius: 10px; background: #F7F7F7; cursor: pointer; transition: all 0.15s; font-family: 'Plus Jakarta Sans', sans-serif; }
         .cat-btn:hover { border-color: #CCCCCC; background: #F0F0F0; }
         .cat-btn-active { background: #fff; }
         .cat-btn-emoji { font-size: 1.4rem; line-height: 1; }
         .cat-btn-label { font-size: 0.68rem; font-weight: 600; color: #484848; }
+        /* Inline edit form */
+        .inline-edit-form { background: #fff; border: 1.5px solid #FF5A5F; border-radius: 12px; padding: 0.85rem; display: flex; flex-direction: column; gap: 0.6rem; box-shadow: 0 4px 16px rgba(255,90,95,0.12); }
+        .inline-edit-actions { display: flex; gap: 0.5rem; margin-top: 0.15rem; }
+        .btn-cancel-small { flex: 1; padding: 0.6rem; border: 1px solid #EBEBEB; border-radius: 8px; background: #F7F7F7; color: #717171; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 600; font-size: 0.82rem; cursor: pointer; }
+        .btn-save-small { flex: 2; padding: 0.6rem; border: none; border-radius: 8px; background: #FF5A5F; color: #fff; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 600; font-size: 0.82rem; cursor: pointer; }
+        .btn-save-small:hover { background: #e0484d; }
+        /* Planning */
         .planning-timeline { display: flex; flex-direction: column; }
         .planning-day { margin-bottom: 1.5rem; }
         .planning-day-header { display: flex; align-items: flex-start; gap: 0.75rem; margin-bottom: 0.75rem; }
