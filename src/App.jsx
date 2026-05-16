@@ -39,7 +39,7 @@ const STOP_CATEGORIES = [
   { id: "avion",      label: "Avion",      emoji: "✈️",  color: "#5B8DEF" },
   { id: "train",      label: "Train",      emoji: "🚆",  color: "#F5A623" },
   { id: "bus",        label: "Bus",        emoji: "🚌",  color: "#7ED321" },
-  { id: "voiture",    label: "Voiture",    emoji: "🚗",  color: "#9B59B6" },
+  { id: "bateau",     label: "Bateau",     emoji: "⛵",  color: "#1ABC9C" },
   { id: "activite",   label: "Activite",   emoji: "🎯",  color: "#E74C3C" },
   { id: "restaurant", label: "Restaurant", emoji: "🍽️", color: "#E67E22" },
 ];
