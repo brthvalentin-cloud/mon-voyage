@@ -91,9 +91,9 @@ function InlineEditForm({ stop, onSave, onCancel }) {
           </button>
         ))}
       </div>
-      <input className="inp" placeholder="Description" value={form.ville} onChange={(e) => setForm({ ...form, ville: e.target.value })} />
+      <textarea className="inp" placeholder="Note" value={form.note || ""} onChange={(e) => setForm({ ...form, note: e.target.value })} rows={3} style={{ resize: "none" }} />
       <input className="inp" type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
-      <input className="inp" placeholder="Note" value={form.note || ""} onChange={(e) => setForm({ ...form, note: e.target.value })} />
+      <textarea className="inp" placeholder="Details, confirmation, adresse..." value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} rows={3} style={{ resize: "none" }} />
       <div className="inline-edit-actions">
         <button className="btn-cancel-small" onClick={onCancel}>Annuler</button>
         <button className="btn-save-small" onClick={() => { if (form.ville.trim()) onSave(form); }}>Enregistrer</button>
@@ -756,7 +756,7 @@ export default function App() {
         .stop-cat-badge { width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; flex-shrink: 0; }
         .stop-main { flex: 1; min-width: 0; }
         .planning-stop-city { font-weight: 700; font-size: 0.92rem; color: #222; display: block; }
-        .stop-note { font-size: 0.8rem; color: #717171; line-height: 1.4; margin-top: 0.2rem; }
+        .stop-note { font-size: 0.8rem; color: #717171; line-height: 1.4; margin-top: 0.2rem; white-space: pre-wrap; }
         .stop-right { display: flex; align-items: center; gap: 0.1rem; flex-shrink: 0; }
         .stop-actions { display: flex; gap: 0.1rem; }
         .drag-handle { font-size: 1.3rem; color: #CCCCCC; cursor: grab; padding: 0.2rem 0.3rem; border-radius: 6px; line-height: 1; touch-action: none; user-select: none; }
