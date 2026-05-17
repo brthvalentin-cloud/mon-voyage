@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { initializeApp } from "firebase/app";
 import { getDatabase, ref, onValue, set, remove as fbRemove } from "firebase/database";
 import {
@@ -72,7 +72,29 @@ function useVoyages() {
   return { voyages, loaded, createVoyage, deleteVoyage, saveVoyageKey };
 }
 
-// ─── INLINE EDIT FORM (compact, replaces the tile) ───────────────────────────
+// Auto-resize textarea helper
+function AutoTextarea({ value, onChange, placeholder, minRows = 2 }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (ref.current) {
+      ref.current.style.height = "auto";
+      ref.current.style.height = ref.current.scrollHeight + "px";
+    }
+  }, [value]);
+  return (
+    <textarea
+      ref={ref}
+      className="inp"
+      placeholder={placeholder}
+      value={value}
+      rows={minRows}
+      style={{ resize: "none", overflow: "hidden" }}
+      onChange={onChange}
+    />
+  );
+}
+
+// ─── INLINE EDIT FORM (replaces the tile in place) ───────────────────────────
 function InlineEditForm({ stop, onSave, onCancel }) {
   const [form, setForm] = useState({ ...stop });
   return (
@@ -91,9 +113,24 @@ function InlineEditForm({ stop, onSave, onCancel }) {
           </button>
         ))}
       </div>
-      <textarea className="inp" placeholder="Note" value={form.note || ""} onChange={(e) => setForm({ ...form, note: e.target.value })} rows={3} style={{ resize: "none" }} />
-      <input className="inp" type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
-      <textarea className="inp" placeholder="Details, confirmation, adresse..." value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} rows={3} style={{ resize: "none" }} />
+      <input
+        className="inp"
+        placeholder="Titre (ex: Paris-Vienne)"
+        value={form.ville}
+        onChange={(e) => setForm({ ...form, ville: e.target.value })}
+      />
+      <input
+        className="inp"
+        type="date"
+        value={form.date}
+        onChange={(e) => setForm({ ...form, date: e.target.value })}
+      />
+      <AutoTextarea
+        placeholder="Details, notes..."
+        value={form.note || ""}
+        onChange={(e) => setForm({ ...form, note: e.target.value })}
+        minRows={3}
+      />
       <div className="inline-edit-actions">
         <button className="btn-cancel-small" onClick={onCancel}>Annuler</button>
         <button className="btn-save-small" onClick={() => { if (form.ville.trim()) onSave(form); }}>Enregistrer</button>
@@ -130,16 +167,31 @@ function StopForm({ initial, onSave, onCancel, title }) {
           </div>
         </div>
         <div className="input-group">
-          <label className="input-label">Description</label>
-          <input className="inp" placeholder="Ex: Vol Paris-Rome, Musee du Louvre..." value={form.ville} onChange={(e) => setForm({ ...form, ville: e.target.value })} />
+          <label className="input-label">Titre</label>
+          <input
+            className="inp"
+            placeholder="Ex: Paris-Vienne, Musee du Louvre..."
+            value={form.ville}
+            onChange={(e) => setForm({ ...form, ville: e.target.value })}
+          />
         </div>
         <div className="input-group">
           <label className="input-label">Date</label>
-          <input className="inp" type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
+          <input
+            className="inp"
+            type="date"
+            value={form.date}
+            onChange={(e) => setForm({ ...form, date: e.target.value })}
+          />
         </div>
         <div className="input-group">
-          <label className="input-label">Note</label>
-          <input className="inp" placeholder="Details, confirmation, adresse..." value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />
+          <label className="input-label">Details</label>
+          <AutoTextarea
+            placeholder="Details, confirmation, adresse..."
+            value={form.note}
+            onChange={(e) => setForm({ ...form, note: e.target.value })}
+            minRows={3}
+          />
         </div>
         <button className="btn-primary" onClick={() => { if (form.ville.trim()) onSave(form); }}>Enregistrer</button>
       </div>
@@ -180,11 +232,10 @@ function StopCardInner({ stop, canDrag, handleProps, isOverlay, onEdit, onRemove
   );
 }
 
-// ─── SORTABLE STOP — shows inline edit form when editing ─────────────────────
+// ─── SORTABLE STOP ────────────────────────────────────────────────────────────
 function SortableStop({ stop, canDrag, editingId, onStartEdit, onSaveEdit, onCancelEdit, onRemove }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: stop._id });
   const isEditing = editingId === stop._id;
-
   return (
     <div
       ref={setNodeRef}
@@ -215,7 +266,7 @@ function SortableStop({ stop, canDrag, editingId, onStartEdit, onSaveEdit, onCan
 function Planning({ stops: rawStops, save }) {
   const [showAdd, setShowAdd] = useState(false);
   const [addDate, setAddDate] = useState("");
-  const [editingId, setEditingId] = useState(null); // _id of stop being edited inline
+  const [editingId, setEditingId] = useState(null);
   const [activeStop, setActiveStop] = useState(null);
   const [stops, setStops] = useState(() => ensureStopIds(rawStops).stops);
   const [isDragging, setIsDragging] = useState(false);
@@ -265,7 +316,7 @@ function Planning({ stops: rawStops, save }) {
 
   const handleDragStart = ({ active }) => {
     setIsDragging(true);
-    setEditingId(null); // close any open edit
+    setEditingId(null);
     setActiveStop(stops.find((s) => s._id === active.id) || null);
   };
 
@@ -325,7 +376,6 @@ function Planning({ stops: rawStops, save }) {
           const { day, date, label } = formatDayHeader(dateStr);
           const dayStops = grouped[dateStr];
           const canDrag = dayStops.length > 1;
-
           return (
             <div key={dateStr} className="planning-day">
               <div className="planning-day-header">
@@ -364,7 +414,6 @@ function Planning({ stops: rawStops, save }) {
                     ))}
                   </div>
                 </SortableContext>
-
                 <DragOverlay dropAnimation={null}>
                   {activeStop ? (
                     <div className="planning-stop" style={{ transform: "rotate(1.5deg)", cursor: "grabbing" }}>
@@ -433,7 +482,7 @@ function Budget({ budget, save }) {
   const [showForm, setShowForm] = useState(false);
   const [showDetail, setShowDetail] = useState(false);
   const categories = ["Transport", "Hebergement", "Resto", "Activites", "Autre"];
-  const catEmoji = { Transport: "🚆", Hebergement: "🏠", Resto: "🍽️", Activites: "🎯", Autre: "📦" };
+  const catEmoji = { Transport: "✈️", Hebergement: "🏠", Resto: "🍽️", Activites: "🎯", Autre: "📦" };
   const catColors = { Transport: "#FF5A5F", Hebergement: "#00A699", Resto: "#FC642D", Activites: "#484848", Autre: "#767676" };
   const items = budget.items || [];
   const total = items.reduce((s, i) => s + parseFloat(i.montant || 0), 0);
@@ -595,7 +644,7 @@ function VoyageList({ voyages, onCreate, onSelect, onDelete }) {
     <>
       <div className="home-header">
         <p className="home-eyebrow">Planificateur collaboratif</p>
-        <h1 className="home-title">Mes Voyages 🚆</h1>
+        <h1 className="home-title">Mes Voyages ✈️</h1>
       </div>
       <div className="section">
         {!showForm && <button className="btn-new-voyage" onClick={() => setShowForm(true)}><span className="btn-new-icon">+</span> Nouveau voyage</button>}
@@ -730,13 +779,11 @@ export default function App() {
         .cat-btn-active { background: #fff; }
         .cat-btn-emoji { font-size: 1.4rem; line-height: 1; }
         .cat-btn-label { font-size: 0.68rem; font-weight: 600; color: #484848; }
-        /* Inline edit form */
         .inline-edit-form { background: #fff; border: 1.5px solid #FF5A5F; border-radius: 12px; padding: 0.85rem; display: flex; flex-direction: column; gap: 0.6rem; box-shadow: 0 4px 16px rgba(255,90,95,0.12); }
         .inline-edit-actions { display: flex; gap: 0.5rem; margin-top: 0.15rem; }
         .btn-cancel-small { flex: 1; padding: 0.6rem; border: 1px solid #EBEBEB; border-radius: 8px; background: #F7F7F7; color: #717171; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 600; font-size: 0.82rem; cursor: pointer; }
         .btn-save-small { flex: 2; padding: 0.6rem; border: none; border-radius: 8px; background: #FF5A5F; color: #fff; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 600; font-size: 0.82rem; cursor: pointer; }
         .btn-save-small:hover { background: #e0484d; }
-        /* Planning */
         .planning-timeline { display: flex; flex-direction: column; }
         .planning-day { margin-bottom: 1.5rem; }
         .planning-day-header { display: flex; align-items: flex-start; gap: 0.75rem; margin-bottom: 0.75rem; }
@@ -756,7 +803,7 @@ export default function App() {
         .stop-cat-badge { width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; flex-shrink: 0; }
         .stop-main { flex: 1; min-width: 0; }
         .planning-stop-city { font-weight: 700; font-size: 0.92rem; color: #222; display: block; }
-        .stop-note { font-size: 0.8rem; color: #717171; line-height: 1.4; margin-top: 0.2rem; white-space: pre-wrap; }
+        .stop-note { font-size: 0.8rem; color: #717171; line-height: 1.5; margin-top: 0.25rem; white-space: pre-wrap; }
         .stop-right { display: flex; align-items: center; gap: 0.1rem; flex-shrink: 0; }
         .stop-actions { display: flex; gap: 0.1rem; }
         .drag-handle { font-size: 1.3rem; color: #CCCCCC; cursor: grab; padding: 0.2rem 0.3rem; border-radius: 6px; line-height: 1; touch-action: none; user-select: none; }
